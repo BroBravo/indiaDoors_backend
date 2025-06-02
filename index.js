@@ -1,17 +1,27 @@
 const express = require('express');
-const sqlroute=require('./routes/sqlroute')
-const mysql = require('mysql2'); // Use 'mysql2' if installed
+const userRoutes=require('./routes/userRoutes')
+const authRoutes=require('./routes/authRoutes')
+const productRoutes=require('./routes/productRoutes')
+const paymentRoute=require('./routes/paymentRoute')
+const mysql = require('mysql2'); 
 const cors = require('cors'); // Allows frontend to communicate with backend
-const jwt = require('jsonwebtoken'); // ✅ Import JWT
+const jwt = require('jsonwebtoken'); 
+const cookieParser = require('cookie-parser');
  // ✅ Define a secret key
 const app = express();
 const PORT = 4000;
 
 
-app.use(cors()); // Enable CORS
+app.use(cors({
+  origin: "http://localhost:3000", // or your frontend domain
+  credentials: true,               // 👈 Allow cookies
+}));
+app.use(cookieParser());
 app.use(express.json()); // Parse JSON request body
-app.use('/',sqlroute);
-
+app.use('/user',userRoutes);
+app.use('/api',authRoutes);
+app.use('/product',productRoutes);
+app.use('/pay',paymentRoute);
 
 // Start Server
 app.listen(PORT, () => {
