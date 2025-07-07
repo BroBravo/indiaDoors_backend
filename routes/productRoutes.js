@@ -8,8 +8,8 @@ router.get("/productList", async (req, res) => {
   const query = `
     SELECT 
       p.name, p.image, p.mrp, p.price, 
-      fw.image AS front_wrap, 
-      bw.image AS back_wrap, 
+      fw.image_path AS front_wrap, 
+      bw.image_path AS back_wrap, 
       p.width_in, p.height_in 
     FROM products p 
     LEFT JOIN laminates fw ON p.front_wrap = fw.name 

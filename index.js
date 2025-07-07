@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const userRoutes=require('./routes/userRoutes')
 const authRoutes=require('./routes/authRoutes')
@@ -7,7 +8,6 @@ const mysql = require('mysql2');
 const cors = require('cors'); // Allows frontend to communicate with backend
 const jwt = require('jsonwebtoken'); 
 const cookieParser = require('cookie-parser');
- // ✅ Define a secret key
 const app = express();
 const PORT = 4000;
 
