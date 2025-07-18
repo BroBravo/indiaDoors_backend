@@ -9,7 +9,7 @@ const cors = require('cors'); // Allows frontend to communicate with backend
 const jwt = require('jsonwebtoken'); 
 const cookieParser = require('cookie-parser');
 const app = express();
-const PORT = 4000;
+const PORT = 5000;
 
 
 app.use(cors({
