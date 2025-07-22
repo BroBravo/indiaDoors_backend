@@ -13,7 +13,7 @@ const PORT = 4000;
 
 
 app.use(cors({
-  origin: "http://localhost:3000", // or your frontend domain
+  origin: process.env.ORIGIN, // or your frontend domain
   credentials: true,               // 👈 Allow cookies
 }));
 app.use(cookieParser());
