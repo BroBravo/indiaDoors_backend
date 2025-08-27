@@ -13,7 +13,7 @@ router.post("/checkout", async (req, res) => {
   const { totalAmount } = req.body;
 
   const options = {
-    amount: totalAmount * 100, // amount in paisa
+    amount: Math.round(Number(totalAmount) * 100), // amount in paisa
     currency: "INR",
     receipt: `order_rcptid_${Date.now()}`,
   };
