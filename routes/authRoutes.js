@@ -119,7 +119,7 @@ router.post("/signup", async (req, res) => {
     userType
   } = req.body;
 
-  if (!firstName || !signupPassword || !phone || !userType || !gender) {
+  if (!firstName || !signupPassword || !phone || !userType) {
     return res.status(400).json({ success: false, message: "Missing required fields" });
   }
 
@@ -150,15 +150,15 @@ router.post("/signup", async (req, res) => {
     // Insert into respective table
     if (userType === 'Customer') {
       await conn.query(
-        `INSERT INTO retail_customers (user_id, first_name, last_name, email, phone_number,gender)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [userId, firstName, lastName || null, email || null, phone,gender]
+        `INSERT INTO retail_customers (user_id, first_name, last_name, email, phone_number)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, firstName, lastName || null, email || null, phone]
       );
     } else {
       await conn.query(
-        `INSERT INTO business_partners (user_id, first_name, last_name, email, phone_number, partner_type,gender)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, firstName, lastName || null, email || null, phone, userType,gender]
+        `INSERT INTO business_partners (user_id, first_name, last_name, email, phone_number, partner_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, firstName, lastName || null, email || null, phone, userType]
       );
     }
 
