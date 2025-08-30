@@ -115,7 +115,6 @@ router.post("/signup", async (req, res) => {
     signupPassword,
     phone,
     email,
-    gender,
     userType
   } = req.body;
 

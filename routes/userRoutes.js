@@ -153,19 +153,15 @@ router.post("/cart/update",verifyToken, async (req, res) =>{
 //Remove item
 router.delete('/cart/remove/:id', verifyToken, async (req, res) => {
   const itemId = req.params.id;
-  const userIdentifier = req.user.identifier; 
-  console.log("User identifier from token:", userIdentifier);
-  const isEmail = validator.isEmail(userIdentifier);
-  const field = isEmail ? "email" : "phone";
+  const userId = req.user.id; 
+ 
+  if (!userId) {
+    return res.status(400).json({ success: false, message: "User ID missing in token" });
+  }
+ 
   
   try {
 
-    const [userRows] = await db.query(`SELECT id FROM users WHERE ${field} = ? LIMIT 1`, [userIdentifier]);
-
-    if (userRows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const userId = userRows[0].id;
     const [result] = await db.query(
       'DELETE FROM cart_items WHERE id = ? AND customer_id = ?',
       [itemId, userId]
