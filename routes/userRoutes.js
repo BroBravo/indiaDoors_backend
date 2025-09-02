@@ -225,19 +225,16 @@ router.get('/cart/items', async (req, res) => {
 //Clear cart
 router.put('/cart/clear',verifyToken, async (req, res) => {
   
-    const userIdentifier = req.user.identifier; // assuming user is authenticated via middleware
-    const isEmail = validator.isEmail(userIdentifier);
-    const field = isEmail ? "email" : "phone";
+   const userId = req.user.id;
     
     try{ 
-      const [userRows] = await db.query(`SELECT id FROM users WHERE ${field} = ? LIMIT 1`, [userIdentifier]);
+      const [userRows] = await db.query(`SELECT 1 FROM users WHERE id = ? LIMIT 1`, [userId]);
 
     if (userRows.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
 
-      const userId = userRows[0].id;
-      await db.query("UPDATE cart_items SET status = ? WHERE user_id = ? AND status = ?",['completed',userId,'pending']);
+      await db.query("UPDATE cart_items SET status = ? WHERE user_id = ? AND status = ?",['Completed',userId,'Pending']);
       res.json({ success: true ,message: "cart cleared"});
     } 
     catch (err) {
@@ -246,6 +243,26 @@ router.put('/cart/clear',verifyToken, async (req, res) => {
   }
 });
 
+//Cart items update on payment initiation
+router.post("/cart/initiatePayment", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Update all pending cart items for this user to "In progress"
+    await db.query(
+      "UPDATE cart_items SET status = 'In progress' WHERE customer_id = ? AND status = 'Pending'",
+      [userId]
+    );
+
+    res.json({ success: true, message: "Cart items marked as In progress" });
+  } catch (err) {
+    console.error("Error updating cart status:", err);
+    res.status(500).json({ success: false, message: "Failed to update cart" });
+  }
+});
+
+
+//get info
 router.get("/info", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
