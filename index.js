@@ -1,9 +1,9 @@
 require('dotenv').config();
 const express = require('express');
-const userRoutes=require('./routes/userRoutes')
-const authRoutes=require('./routes/authRoutes')
-const productRoutes=require('./routes/productRoutes')
-const paymentRoute=require('./routes/paymentRoute')
+const userRoutes=require('./appRoutes/userRoutes')
+const authRoutes=require('./appRoutes/authRoutes')
+const productRoutes=require('./appRoutes/productRoutes')
+const paymentRoute=require('./appRoutes/paymentRoute')
 const mysql = require('mysql2'); 
 const cors = require('cors'); // Allows frontend to communicate with backend
 const jwt = require('jsonwebtoken'); 
