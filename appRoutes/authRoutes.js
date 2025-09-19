@@ -74,7 +74,7 @@ router.post("/login", async (req, res) => {
 
     const token = jwt.sign(tokenPayload, SECRET_KEY, { expiresIn: "1h" });
 
-    res.cookie("token", token, {
+    res.cookie("user_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "Strict",
@@ -94,7 +94,7 @@ router.post("/login", async (req, res) => {
 
 // AUTH CHECK
 router.get("/auth", async(req, res) => {
-  const token = req.cookies.token;
+  const token = req.cookies.user_token;
   if (!token) {
     return res.status(401).json({ message: "Unauthorized: No token provided", code: "TOKEN_MISSING" });
   }
@@ -212,7 +212,7 @@ router.post("/signup", async (req, res) => {
 
 //Logout
 router.post('/logout', async (req, res) => {
-  res.clearCookie('token', {
+  res.clearCookie('user_token', {
     httpOnly: true,
     secure: true,       // set true if using HTTPS
     sameSite: 'Strict'  // or 'Lax', depending on your setup
