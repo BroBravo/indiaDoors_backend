@@ -9,7 +9,7 @@ const cors = require('cors'); // Allows frontend to communicate with backend
 const cookieParser = require('cookie-parser');
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+const noCache = require("./config/noCache");
 const allowedOrigins = [
   process.env.ORIGIN,        
   process.env.ADMIN_ORIGIN,  
@@ -30,13 +30,13 @@ app.use(cookieParser());
 app.use(express.json()); // Parse JSON request body
 
 //App specific routes
-app.use('/user',userRoutes);
+app.use('/user',noCache,userRoutes);
 app.use('/api',authRoutes);
 app.use('/product',productRoutes);
 app.use('/pay',paymentRoute);
 
 //Admin specif routes
-app.use('/admin/user',adminAuthRoute);
+app.use('/admin/user',noCache,adminAuthRoute);
 
 // Start Server
 app.listen(PORT, () => {
