@@ -10,11 +10,22 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  process.env.ORIGIN,        
+  process.env.ADMIN_ORIGIN,  
+];
 
 app.use(cors({
-  origin: process.env.ORIGIN, // or your frontend domain
-  credentials: true,               // 👈 Allow cookies
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS not allowed"));
+    }
+  },
+  credentials: true
 }));
+
 app.use(cookieParser());
 app.use(express.json()); // Parse JSON request body
 

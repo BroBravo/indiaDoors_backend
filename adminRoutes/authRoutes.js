@@ -137,4 +137,41 @@ router.post("/signup", async (req, res) => {
   }
 });
 
+// Verify Admin Auth 
+router.get("/auth", async (req, res) => {
+  try {
+    const token = req.cookies?.admin_token;
+    if (!token) {
+      return res.status(401).json({ success: false, message: "No token provided" });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, SECRET_KEY);
+
+    // Optionally fetch latest user info from DB (to check active/role status)
+    const [rows] = await db.query(
+      "SELECT id, username, phone, role, is_active FROM admin_users WHERE id = ? LIMIT 1",
+      [decoded.id]
+    );
+
+    if (rows.length === 0 || !rows[0].is_active) {
+      return res.status(401).json({ success: false, message: "Invalid or inactive user" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Authenticated",
+      user: {
+        id: rows[0].id,
+        username: rows[0].username,
+        role: rows[0].role,
+      },
+    });
+  } catch (err) {
+    console.error("Auth verify error:", err);
+    return res.status(401).json({ success: false, message: "Invalid or expired token" });
+  }
+});
+
+
 module.exports = router;
