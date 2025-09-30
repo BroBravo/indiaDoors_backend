@@ -173,5 +173,17 @@ router.get("/auth", async (req, res) => {
   }
 });
 
+// Admin logout route
+router.post("/logout", (req, res) => {
+  res.clearCookie("admin_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "Strict" : "Lax",
+  });
+
+  return res.json({ success: true, message: "Logged out successfully" });
+});
+
+
 
 module.exports = router;
