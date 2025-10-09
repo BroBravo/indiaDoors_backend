@@ -5,6 +5,7 @@ const authRoutes=require('./appRoutes/authRoutes');
 const productRoutes=require('./appRoutes/productRoutes');
 const paymentRoute=require('./appRoutes/paymentRoute');
 const adminAuthRoute=require('./adminRoutes/authRoutes');
+const adminOrderRoute=require('./adminRoutes/orderRoutes');
 const cors = require('cors'); // Allows frontend to communicate with backend
 const cookieParser = require('cookie-parser');
 const app = express();
@@ -37,6 +38,7 @@ app.use('/pay',paymentRoute);
 
 //Admin specif routes
 app.use('/admin/user',noCache,adminAuthRoute);
+app.use('/admin/order',noCache,adminOrderRoute);
 
 // Start Server
 app.listen(PORT, () => {

@@ -9,7 +9,7 @@ const SECRET_KEY = process.env.SECRET_KEY || "your_default_secret";
 
 //Add item
 router.post("/cart/add",verifyToken, async (req, res) => {
-  const token=req.cookies.token;
+  const token=req.cookies.user_token;
   if (!token) return res.status(401).json({ message: "Unauthorized: No token" });
   
   const {
