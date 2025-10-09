@@ -180,7 +180,7 @@ router.delete('/cart/remove/:id', verifyToken, async (req, res) => {
 
 //Get items from cart
 router.get('/cart/items', async (req, res) => {
-  const token = req.cookies.token;
+  const token = req.cookies.user_token;
   if (!token) return res.status(401).json({ message: "Unauthorized: No token" });
 
   try {
