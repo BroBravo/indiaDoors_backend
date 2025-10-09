@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const  router  = express.Router();
 const Razorpay = require("razorpay");
 const db = require("../config/connection1");
-const verifyToken = require('../config/verifyToken');
+const verifyUserToken = require('../config/verifyUserToken');
 require('dotenv').config();
 
 const razorpay = new Razorpay({
@@ -29,7 +29,7 @@ const razorpay = new Razorpay({
 //   }
 // });
 
-router.post("/checkout",verifyToken, async (req, res) => {
+router.post("/checkout",verifyUserToken, async (req, res) => {
   const { cartItems, totalAmount } = req.body;
   const userId = req.user.id; // assuming auth middleware
 
@@ -98,7 +98,7 @@ router.post("/checkout",verifyToken, async (req, res) => {
 });
 
 //verify razorpay payment
-router.post("/verify",verifyToken,  async (req, res) => {
+router.post("/verify",verifyUserToken,  async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
   try {

@@ -4,8 +4,9 @@ const jwt = require("jsonwebtoken");
 const router = express.Router();
 const db = require("../config/connection1");  
 const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
+const verifyAdminToken = require("../config/verifyAdminToken");
 
-router.get("/get/table", /* verifyAdmin, */ async (req, res) => {
+router.get("/get/table",  verifyAdminToken,  async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);

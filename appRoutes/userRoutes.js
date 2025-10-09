@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/connection1'); 
-const verifyToken = require('../config/verifyToken');
+const verifyUserToken = require('../config/verifyUserToken');
 const jwt = require('jsonwebtoken');
 const validator = require("validator");
 require('dotenv').config();
 const SECRET_KEY = process.env.SECRET_KEY || "your_default_secret";
 
 //Add item
-router.post("/cart/add",verifyToken, async (req, res) => {
+router.post("/cart/add",verifyUserToken, async (req, res) => {
   const token=req.cookies.user_token;
   if (!token) return res.status(401).json({ message: "Unauthorized: No token" });
   
@@ -74,7 +74,7 @@ router.post("/cart/add",verifyToken, async (req, res) => {
 });
 
 //Update item
-router.post("/cart/update",verifyToken, async (req, res) =>{
+router.post("/cart/update",verifyUserToken, async (req, res) =>{
 
   const {
     id,
@@ -151,7 +151,7 @@ router.post("/cart/update",verifyToken, async (req, res) =>{
 });
 
 //Remove item
-router.delete('/cart/remove/:id', verifyToken, async (req, res) => {
+router.delete('/cart/remove/:id', verifyUserToken, async (req, res) => {
   const itemId = req.params.id;
   const userId = req.user.id; 
  
@@ -223,7 +223,7 @@ router.get('/cart/items', async (req, res) => {
 });
 
 //Clear cart
-router.put('/cart/clear',verifyToken, async (req, res) => {
+router.put('/cart/clear',verifyUserToken, async (req, res) => {
   
    const userId = req.user.id;
     
@@ -244,7 +244,7 @@ router.put('/cart/clear',verifyToken, async (req, res) => {
 });
 
 //Cart items update on payment initiation
-router.post("/cart/initiatePayment", verifyToken, async (req, res) => {
+router.post("/cart/initiatePayment", verifyUserToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -263,7 +263,7 @@ router.post("/cart/initiatePayment", verifyToken, async (req, res) => {
 
 
 //get info
-router.get("/info", verifyToken, async (req, res) => {
+router.get("/info", verifyUserToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
