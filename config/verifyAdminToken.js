@@ -1,5 +1,10 @@
-const jwt = require("jsonwebtoken");
-require('dotenv').config();
+// const jwt = require("jsonwebtoken");
+// require('dotenv').config();
+// const secret = process.env.JWT_SECRET;
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 const secret = process.env.JWT_SECRET;
 
 const verifyAdminToken = (req, res, next) => {
@@ -20,4 +25,4 @@ const verifyAdminToken = (req, res, next) => {
   }
 };
 
-module.exports = verifyAdminToken;
+export default verifyAdminToken;

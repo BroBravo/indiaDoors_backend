@@ -1,10 +1,16 @@
-const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const router = express.Router();
-const db = require("../config/connection1");  
-const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
+// const express = require("express");
+// const bcrypt = require("bcryptjs");
+// const jwt = require("jsonwebtoken");
+// const router = express.Router();
+// const db = require("../config/connection1");  
+// const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import db from "../config/connection1.js";
 
+const router = express.Router();
+const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
 // Admin login route
 router.post("/login", async (req, res) => {
   const { loginId, password } = req.body; 
@@ -185,5 +191,4 @@ router.post("/logout", (req, res) => {
 });
 
 
-
-module.exports = router;
+export default router;

@@ -7,4 +7,4 @@ function noCache(req, res, next) {
   next();
 }
 
-module.exports = noCache;
+export default noCache;

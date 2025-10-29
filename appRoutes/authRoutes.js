@@ -1,11 +1,22 @@
-require('dotenv').config();
-const express = require("express");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const validator = require("validator");
+// require('dotenv').config();
+// const express = require("express");
+// const bcrypt = require("bcrypt");
+// const jwt = require("jsonwebtoken");
+// const validator = require("validator");
+// const router = express.Router();
+// const db = require("../config/connection1"); // your mysql2/promise pool
+// const SECRET_KEY = process.env.JWT_SECRET ; // Set securely in .env
+import dotenv from "dotenv";
+import express from "express";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import validator from "validator";
+import db from "../config/connection1.js"; // mysql2/promise pool
+
+dotenv.config();
+
 const router = express.Router();
-const db = require("../config/connection1"); // your mysql2/promise pool
-const SECRET_KEY = process.env.JWT_SECRET ; // Set securely in .env
+const SECRET_KEY = process.env.JWT_SECRET;
 
 // LOGIN
 router.post("/login", async (req, res) => {
@@ -220,4 +231,4 @@ router.post('/logout', async (req, res) => {
   res.json({ message: 'Logged out' });
 });
 
-module.exports = router;
+export default router;

@@ -1,13 +1,29 @@
-const express = require("express");
-const crypto = require("crypto");
-const  router  = express.Router();
-const Razorpay = require("razorpay");
-const db = require("../config/connection1");
-const verifyUserToken = require('../config/verifyUserToken');
-require('dotenv').config();
+// const express = require("express");
+// const crypto = require("crypto");
+// const  router  = express.Router();
+// const Razorpay = require("razorpay");
+// const db = require("../config/connection1");
+// const verifyUserToken = require('../config/verifyUserToken');
+// require('dotenv').config();
+
+// const razorpay = new Razorpay({
+//   key_id: process.env.RAZORPAY_KEY_ID,     
+//   key_secret: process.env.RAZORPAY_KEY_SECRET,
+// });
+
+import express from "express";
+import crypto from "crypto";
+import Razorpay from "razorpay";
+import dotenv from "dotenv";
+import db from "../config/connection1.js";
+import verifyUserToken from "../config/verifyUserToken.js";
+
+dotenv.config();
+
+const router = express.Router();
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,     
+  key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
@@ -159,4 +175,4 @@ router.post("/verify",verifyUserToken,  async (req, res) => {
   }
 });
 
-module.exports=router;
+export default router;

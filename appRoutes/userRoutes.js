@@ -1,11 +1,24 @@
-const express = require('express');
+// const express = require('express');
+// const router = express.Router();
+// const db = require('../config/connection1'); 
+// const verifyUserToken = require('../config/verifyUserToken');
+// const jwt = require('jsonwebtoken');
+// const validator = require("validator");
+// require('dotenv').config();
+// const SECRET_KEY = process.env.SECRET_KEY || "your_default_secret";
+
+import express from "express";
+import db from "../config/connection1.js";
+import verifyUserToken from "../config/verifyUserToken.js";
+import jwt from "jsonwebtoken";
+import validator from "validator";
+import dotenv from "dotenv";
+
+dotenv.config();
+
 const router = express.Router();
-const db = require('../config/connection1'); 
-const verifyUserToken = require('../config/verifyUserToken');
-const jwt = require('jsonwebtoken');
-const validator = require("validator");
-require('dotenv').config();
 const SECRET_KEY = process.env.SECRET_KEY || "your_default_secret";
+
 
 //Add item
 router.post("/cart/add",verifyUserToken, async (req, res) => {
@@ -306,4 +319,4 @@ router.get("/info", verifyUserToken, async (req, res) => {
 });
 
 
-module.exports = router;
+export default router;

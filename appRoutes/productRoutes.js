@@ -1,7 +1,12 @@
 
-const express = require('express');
+// const express = require('express');
+// const router = express.Router();
+// const db = require('../config/connection1'); // mysql2/promise pool
+
+import express from "express";
+import db from "../config/connection1.js"; // mysql2/promise pool
+
 const router = express.Router();
-const db = require('../config/connection1'); // mysql2/promise pool
 
 // Get all products with joined laminates images
 router.get("/productList", async (req, res) => {
@@ -70,4 +75,4 @@ router.get("/carvings", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

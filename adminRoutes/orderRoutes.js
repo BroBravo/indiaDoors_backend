@@ -1,10 +1,18 @@
-const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+// const express = require("express");
+// const bcrypt = require("bcryptjs");
+// const jwt = require("jsonwebtoken");
+// const router = express.Router();
+// const db = require("../config/connection1");  
+// const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
+// const verifyAdminToken = require("../config/verifyAdminToken");
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import db from "../config/connection1.js";
+import verifyAdminToken from "../config/verifyAdminToken.js";
+
 const router = express.Router();
-const db = require("../config/connection1");  
 const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
-const verifyAdminToken = require("../config/verifyAdminToken");
 
 router.get("/get/table", verifyAdminToken,  async (req, res) => {
   try {
@@ -41,4 +49,4 @@ router.get("/get/table", verifyAdminToken,  async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
