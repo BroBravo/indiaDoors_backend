@@ -160,6 +160,61 @@ router.get("/laminate/get/table", verifyAdminToken, async (req, res) => {
   }
 });
 
+router.get("/laminate/get/filter", verifyAdminToken, async (req, res) => {
+  try {
+    const [columns] = await db.query(`DESCRIBE laminates`);
+
+    const filters = [];
+    const values = [];
+
+    for (const col of columns) {
+      const colName = col.Field;
+      const value = req.query[colName];
+
+      if (value !== undefined && value !== "") {
+        const type = col.Type.toLowerCase();
+
+        if (type.includes("char") || type.includes("text")) {
+          filters.push(`${colName} LIKE ?`);
+          values.push(`${value}%`);
+        } else if (type.includes("date") || type.includes("timestamp")) {
+          filters.push(`DATE(${colName}) = ?`);
+          values.push(value);
+        } else {
+          filters.push(`${colName} = ?`);
+          values.push(value);
+        }
+      }
+    }
+
+    const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+    const sql = `
+      SELECT id, name, image_path, price, discount_perc, active
+      FROM laminates
+      ${whereClause}
+      ORDER BY id ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [rows] = await db.query(sql, [...values, limit, offset]);
+    const [[{ totalCount }]] = await db.query(
+      `SELECT COUNT(*) AS totalCount FROM laminates ${whereClause}`,
+      values
+    );
+
+    const hasMore = offset + limit < totalCount;
+
+    res.json({ success: true, total: totalCount, hasMore, items: rows });
+  } catch (err) {
+    console.error("GET /admin/laminate/get/filter failed:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 // ---Carving Products Routes------------------------------------------------------------------------
 
 router.get("/carving/get/table", verifyAdminToken, async (req, res) => {
@@ -193,5 +248,59 @@ router.get("/carving/get/table", verifyAdminToken, async (req, res) => {
   }
 });
 
+router.get("/carving/get/filter", verifyAdminToken, async (req, res) => {
+  try {
+    const [columns] = await db.query(`DESCRIBE carvings`);
+
+    const filters = [];
+    const values = [];
+
+    for (const col of columns) {
+      const colName = col.Field;
+      const value = req.query[colName];
+
+      if (value !== undefined && value !== "") {
+        const type = col.Type.toLowerCase();
+
+        if (type.includes("char") || type.includes("text")) {
+          filters.push(`${colName} LIKE ?`);
+          values.push(`${value}%`);
+        } else if (type.includes("date") || type.includes("timestamp")) {
+          filters.push(`DATE(${colName}) = ?`);
+          values.push(value);
+        } else {
+          filters.push(`${colName} = ?`);
+          values.push(value);
+        }
+      }
+    }
+
+    const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+    const sql = `
+      SELECT id, name, image_path, price, discount_perc, active
+      FROM carvings
+      ${whereClause}
+      ORDER BY id ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [rows] = await db.query(sql, [...values, limit, offset]);
+    const [[{ totalCount }]] = await db.query(
+      `SELECT COUNT(*) AS totalCount FROM carvings ${whereClause}`,
+      values
+    );
+
+    const hasMore = offset + limit < totalCount;
+
+    res.json({ success: true, total: totalCount, hasMore, items: rows });
+  } catch (err) {
+    console.error("GET /admin/carving/get/filter failed:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 
 export default router;
