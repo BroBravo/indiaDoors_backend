@@ -69,7 +69,7 @@ app.use('/pay',paymentRoute);
 app.use('/admin/user',noCache,adminAuthRoute);
 app.use('/admin/order',noCache,adminOrderRoute);
 app.use('/admin/product',noCache,adminProductRoute);
-
+//test comment
 //Static files and uploads
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 // Start Server
