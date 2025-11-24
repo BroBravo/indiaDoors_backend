@@ -12,30 +12,46 @@ const router = express.Router();
 
 router.get("/get/table", verifyAdminToken, async (req, res) => {
   try {
-    // 🧩 Pagination parameters
     const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
-    // 🧠 SQL query — aligned with your finished products table
     const sql = `
       SELECT
-        product_id, name, image, mrp, price,
-        front_wrap, back_wrap,
-        front_carving, back_carving,
-        width_in, height_in,
-        created_at, updated_at
-      FROM products
-      ORDER BY product_id ASC
+        p.product_id,
+        p.name,
+        p.image,
+        p.mrp,
+        p.price,
+        p.front_wrap,
+        p.back_wrap,
+        p.front_carving,
+        p.back_carving,
+        p.width_in,
+        p.height_in,
+        p.created_at,
+        p.updated_at,
+
+        -- wrap images
+        fw.image_path AS front_wrap_image,
+        bw.image_path AS back_wrap_image,
+
+        -- carving images 👇
+        fc.image_path AS front_carving_image,
+        bc.image_path AS back_carving_image
+      FROM products p
+      LEFT JOIN laminates fw ON p.front_wrap = fw.name
+      LEFT JOIN laminates bw ON p.back_wrap = bw.name
+      LEFT JOIN carvings fc ON p.front_carving = fc.name
+      LEFT JOIN carvings bc ON p.back_carving = bc.name
+      ORDER BY p.product_id ASC
       LIMIT ? OFFSET ?
     `;
 
-    // ⚙️ Fetch one extra row to detect "hasMore"
     const [rows] = await db.query(sql, [limit + 1, offset]);
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
 
-    // ✅ Response payload
     res.json({
       success: true,
       items,
@@ -49,16 +65,13 @@ router.get("/get/table", verifyAdminToken, async (req, res) => {
 });
 
 
-
 router.get("/get/filter", verifyAdminToken, async (req, res) => {
   try {
-    // Fetch table metadata once
     const [columns] = await db.query(`DESCRIBE products`);
 
     const filters = [];
     const values = [];
 
-    // Build filters dynamically
     for (const col of columns) {
       const colName = col.Field;
       const value = req.query[colName];
@@ -66,49 +79,61 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
       if (value !== undefined && value !== "") {
         const type = col.Type.toLowerCase();
 
-        // Detect string-like columns for partial search
         if (type.includes("char") || type.includes("text") || type.includes("blob")) {
-          filters.push(`${colName} LIKE ?`);
+          filters.push(`p.\`${colName}\` LIKE ?`);
           values.push(`${value}%`);
-        }
-        // For date columns, compare date only
-        else if (type.includes("date") || type.includes("timestamp")) {
-          filters.push(`DATE(${colName}) = ?`);
+        } else if (type.includes("date") || type.includes("timestamp")) {
+          filters.push(`DATE(p.\`${colName}\`) = ?`);
           values.push(value);
-        }
-        // Numeric/decimal types
-        else {
-          filters.push(`${colName} = ?`);
+        } else {
+          filters.push(`p.\`${colName}\` = ?`);
           values.push(value);
         }
       }
     }
 
-    // Pagination
     const limit = Math.max(parseInt(req.query.limit) || 10, 1);
     const offset = Math.max(parseInt(req.query.offset) || 0, 0);
 
     const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-    // Main query
     const sql = `
       SELECT
-        product_id, name, image, mrp, price,
-        front_wrap, back_wrap,
-        front_carving, back_carving,
-        width_in, height_in,
-        created_at, updated_at
-      FROM products
+        p.product_id,
+        p.name,
+        p.image,
+        p.mrp,
+        p.price,
+        p.front_wrap,
+        p.back_wrap,
+        p.front_carving,
+        p.back_carving,
+        p.width_in,
+        p.height_in,
+        p.created_at,
+        p.updated_at,
+
+        -- wrap images
+        fw.image_path AS front_wrap_image,
+        bw.image_path AS back_wrap_image,
+
+        -- carving images 👇
+        fc.image_path AS front_carving_image,
+        bc.image_path AS back_carving_image
+      FROM products p
+      LEFT JOIN laminates fw ON p.front_wrap = fw.name
+      LEFT JOIN laminates bw ON p.back_wrap = bw.name
+      LEFT JOIN carvings fc ON p.front_carving = fc.name
+      LEFT JOIN carvings bc ON p.back_carving = bc.name
       ${whereClause}
-      ORDER BY product_id ASC
+      ORDER BY p.product_id ASC
       LIMIT ? OFFSET ?
     `;
 
     const [rows] = await db.query(sql, [...values, limit, offset]);
 
-    // Total count
     const [[{ totalCount }]] = await db.query(
-      `SELECT COUNT(*) AS totalCount FROM products ${whereClause}`,
+      `SELECT COUNT(*) AS totalCount FROM products p ${whereClause}`,
       values
     );
 
@@ -124,6 +149,135 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
   } catch (err) {
     console.error("GET /admin/products/get/filter failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+
+router.post("/bulk-update", verifyAdminToken, async (req, res) => {
+  try {
+    let { ids, filters, data } = req.body;
+
+    // --------- 1) Validate update data ----------
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "No update data provided.",
+      });
+    }
+
+    // Columns that are allowed to be updated
+    const allowedColumns = [
+      "name",
+      "image",
+      "mrp",
+      "price",
+      "front_wrap",
+      "back_wrap",
+      "front_carving",
+      "back_carving",
+      "width_in",
+      "height_in",
+      // add any more editable columns here
+    ];
+
+    const setClauses = [];
+    const setValues = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      if (!allowedColumns.includes(key)) continue; // skip disallowed columns
+      if (value === "" || value === null || value === undefined) continue; // skip empty
+
+      setClauses.push(`\`${key}\` = ?`);
+      setValues.push(value);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields to update.",
+      });
+    }
+
+    // Optional: always bump updated_at
+    setClauses.push("updated_at = NOW()");
+
+    // --------- 2) Build WHERE clause from ids + filters ----------
+
+    const whereParts = [];
+    const whereValues = [];
+
+    // Normalize ids
+    if (Array.isArray(ids) && ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      whereParts.push(`product_id IN (${placeholders})`);
+      whereValues.push(...ids);
+    } else {
+      ids = null; // treat anything else as "no IDs"
+    }
+
+    // Filters
+    if (filters && typeof filters === "object") {
+      // columns we allow in filters (for safety)
+      const filterableColumns = [
+        "product_id",
+        "name",
+        "mrp",
+        "price",
+        "front_wrap",
+        "back_wrap",
+        "front_carving",
+        "back_carving",
+        "width_in",
+        "height_in",
+        "created_at",
+        "updated_at",
+      ];
+
+      for (const [key, rawVal] of Object.entries(filters)) {
+        if (!rawVal) continue;
+        if (!filterableColumns.includes(key)) continue;
+
+        const val = String(rawVal);
+
+        if (["mrp", "price", "width_in", "height_in", "product_id"].includes(key)) {
+          // numeric / exact filters
+          whereParts.push(`\`${key}\` = ?`);
+          whereValues.push(val);
+        } else {
+          // string-ish filters -> LIKE
+          whereParts.push(`\`${key}\` LIKE ?`);
+          whereValues.push(`%${val}%`);
+        }
+      }
+    }
+
+    // If ids = null and no filters => this will update ALL rows (your requirement)
+    const whereClause =
+      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    const sql = `
+      UPDATE products
+      SET ${setClauses.join(", ")}
+      ${whereClause}
+    `;
+
+    // Final params: first SET values, then WHERE values
+    const params = [...setValues, ...whereValues];
+
+    const [result] = await db.query(sql, params);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      message: `Updated ${result.affectedRows} product(s).`,
+    });
+  } catch (err) {
+    console.error("POST /admin/product/bulk-update failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating products.",
+    });
   }
 });
 
