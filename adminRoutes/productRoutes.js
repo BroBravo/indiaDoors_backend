@@ -369,6 +369,110 @@ router.get("/laminate/get/filter", verifyAdminToken, async (req, res) => {
   }
 });
 
+
+router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
+  try {
+    let { ids, filters, data } = req.body;
+
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "No update data provided.",
+      });
+    }
+
+    // Columns that can be edited in laminates
+    const allowedColumns = [
+      "name",
+      "image_path",
+      "price",
+      "discount_perc",
+      "active",
+    ];
+
+    const setClauses = [];
+    const setValues = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      if (!allowedColumns.includes(key)) continue;
+      if (value === "" || value === null || value === undefined) continue;
+
+      setClauses.push(`\`${key}\` = ?`);
+      setValues.push(value);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields to update.",
+      });
+    }
+
+    const whereParts = [];
+    const whereValues = [];
+
+    // IDs filter (selected rows)
+    if (Array.isArray(ids) && ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      whereParts.push(`id IN (${placeholders})`);
+      whereValues.push(...ids);
+    } else {
+      ids = null;
+    }
+
+    // Additional filters (from table header filters)
+    if (filters && typeof filters === "object") {
+      const filterableColumns = [
+        "id",
+        "name",
+        "image_path",
+        "price",
+        "discount_perc",
+        "active",
+      ];
+
+      for (const [key, rawVal] of Object.entries(filters)) {
+        if (!rawVal) continue;
+        if (!filterableColumns.includes(key)) continue;
+
+        const val = String(rawVal);
+
+        if (["id", "price", "discount_perc", "active"].includes(key)) {
+          whereParts.push(`\`${key}\` = ?`);
+          whereValues.push(val);
+        } else {
+          whereParts.push(`\`${key}\` LIKE ?`);
+          whereValues.push(`%${val}%`);
+        }
+      }
+    }
+
+    const whereClause =
+      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    const sql = `
+      UPDATE laminates
+      SET ${setClauses.join(", ")}
+      ${whereClause}
+    `;
+
+    const params = [...setValues, ...whereValues];
+    const [result] = await db.query(sql, params);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      message: `Updated ${result.affectedRows} laminate(s).`,
+    });
+  } catch (err) {
+    console.error("POST /admin/product/laminate/bulk-update failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating laminates.",
+    });
+  }
+});
+
 // ---Carving Products Routes------------------------------------------------------------------------
 
 router.get("/carving/get/table", verifyAdminToken, async (req, res) => {
@@ -456,5 +560,109 @@ router.get("/carving/get/filter", verifyAdminToken, async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+
+router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
+  try {
+    let { ids, filters, data } = req.body;
+
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "No update data provided.",
+      });
+    }
+
+    const allowedColumns = [
+      "name",
+      "image_path",
+      "price",
+      "discount_perc",
+      "active",
+    ];
+
+    const setClauses = [];
+    const setValues = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      if (!allowedColumns.includes(key)) continue;
+      if (value === "" || value === null || value === undefined) continue;
+
+      setClauses.push(`\`${key}\` = ?`);
+      setValues.push(value);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields to update.",
+      });
+    }
+
+    const whereParts = [];
+    const whereValues = [];
+
+    // IDs filter
+    if (Array.isArray(ids) && ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      whereParts.push(`id IN (${placeholders})`);
+      whereValues.push(...ids);
+    } else {
+      ids = null;
+    }
+
+    // Header filters
+    if (filters && typeof filters === "object") {
+      const filterableColumns = [
+        "id",
+        "name",
+        "image_path",
+        "price",
+        "discount_perc",
+        "active",
+      ];
+
+      for (const [key, rawVal] of Object.entries(filters)) {
+        if (!rawVal) continue;
+        if (!filterableColumns.includes(key)) continue;
+
+        const val = String(rawVal);
+
+        if (["id", "price", "discount_perc", "active"].includes(key)) {
+          whereParts.push(`\`${key}\` = ?`);
+          whereValues.push(val);
+        } else {
+          whereParts.push(`\`${key}\` LIKE ?`);
+          whereValues.push(`%${val}%`);
+        }
+      }
+    }
+
+    const whereClause =
+      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    const sql = `
+      UPDATE carvings
+      SET ${setClauses.join(", ")}
+      ${whereClause}
+    `;
+
+    const params = [...setValues, ...whereValues];
+    const [result] = await db.query(sql, params);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      message: `Updated ${result.affectedRows} carving(s).`,
+    });
+  } catch (err) {
+    console.error("POST /admin/product/carving/bulk-update failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating carvings.",
+    });
+  }
+});
+
 
 export default router;
