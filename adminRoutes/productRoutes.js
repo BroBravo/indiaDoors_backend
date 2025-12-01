@@ -1,14 +1,61 @@
-// const express = require("express");
-// const verifyAdminToken = require("../config/verifyAdminToken");
-// const db = require("../config/connection1");
-// const router = express.Router();
 import express from "express";
 import verifyAdminToken from "../config/verifyAdminToken.js";
 import db from "../config/connection1.js";
 
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
 const router = express.Router();
 
-// ---Finished Products Table Routes------------------------------------------------------------------------
+// ------------------------------------------------------------------
+//  Common path helpers
+// ------------------------------------------------------------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// PROJECT ROOT  (../ from routes folder)
+const PROJECT_ROOT = path.join(__dirname, "..");
+
+// Where your existing static assets live (as in screenshots):
+//   assets/products/laminates/...
+//   assets/products/carvings/...
+const ASSETS_PRODUCTS_ROOT = path.join(PROJECT_ROOT, "assets", "products");
+const LAMINATE_DIR = path.join(ASSETS_PRODUCTS_ROOT, "laminates");
+const CARVING_DIR = path.join(ASSETS_PRODUCTS_ROOT, "carvings");
+
+// Make sure folders exist
+fs.mkdirSync(LAMINATE_DIR, { recursive: true });
+fs.mkdirSync(CARVING_DIR, { recursive: true });
+
+// Separate storage configs so each route goes to the right folder
+const laminateStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, LAMINATE_DIR);
+  },
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+const carvingStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, CARVING_DIR);
+  },
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+const uploadLaminate = multer({ storage: laminateStorage });
+const uploadCarving = multer({ storage: carvingStorage });
+
+/* ==================================================================
+   FINISHED PRODUCTS — TABLE VIEW / FILTER / BULK UPDATE
+   ================================================================== */
 
 router.get("/get/table", verifyAdminToken, async (req, res) => {
   try {
@@ -19,15 +66,16 @@ router.get("/get/table", verifyAdminToken, async (req, res) => {
       SELECT
         p.product_id,
         p.name,
-        p.image,
         p.mrp,
         p.price,
+        p.wood_type, 
         p.front_wrap,
         p.back_wrap,
         p.front_carving,
         p.back_carving,
         p.width_in,
         p.height_in,
+        p.active,               -- ✅ added
         p.created_at,
         p.updated_at,
 
@@ -35,7 +83,7 @@ router.get("/get/table", verifyAdminToken, async (req, res) => {
         fw.image_path AS front_wrap_image,
         bw.image_path AS back_wrap_image,
 
-        -- carving images 👇
+        -- carving images
         fc.image_path AS front_carving_image,
         bc.image_path AS back_carving_image
       FROM products p
@@ -59,11 +107,10 @@ router.get("/get/table", verifyAdminToken, async (req, res) => {
       hasMore,
     });
   } catch (err) {
-    console.error("GET /admin/products failed:", err);
+    console.error("GET /admin/product/get/table failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
 
 router.get("/get/filter", verifyAdminToken, async (req, res) => {
   try {
@@ -101,15 +148,16 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
       SELECT
         p.product_id,
         p.name,
-        p.image,
         p.mrp,
         p.price,
+        p.wood_type, 
         p.front_wrap,
         p.back_wrap,
         p.front_carving,
         p.back_carving,
         p.width_in,
         p.height_in,
+        p.active,               -- ✅ added
         p.created_at,
         p.updated_at,
 
@@ -117,7 +165,7 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
         fw.image_path AS front_wrap_image,
         bw.image_path AS back_wrap_image,
 
-        -- carving images 👇
+        -- carving images
         fc.image_path AS front_carving_image,
         bc.image_path AS back_carving_image
       FROM products p
@@ -147,18 +195,15 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
       items: rows,
     });
   } catch (err) {
-    console.error("GET /admin/products/get/filter failed:", err);
+    console.error("GET /admin/product/get/filter failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
-
 
 router.post("/bulk-update", verifyAdminToken, async (req, res) => {
   try {
     let { ids, filters, data } = req.body;
 
-    // --------- 1) Validate update data ----------
     if (!data || typeof data !== "object") {
       return res.status(400).json({
         success: false,
@@ -166,27 +211,26 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
       });
     }
 
-    // Columns that are allowed to be updated
     const allowedColumns = [
       "name",
-      "image",
       "mrp",
       "price",
+      "wood_type",
       "front_wrap",
       "back_wrap",
       "front_carving",
       "back_carving",
       "width_in",
       "height_in",
-      // add any more editable columns here
+      "active",             // ✅ added
     ];
 
     const setClauses = [];
     const setValues = [];
 
     for (const [key, value] of Object.entries(data)) {
-      if (!allowedColumns.includes(key)) continue; // skip disallowed columns
-      if (value === "" || value === null || value === undefined) continue; // skip empty
+      if (!allowedColumns.includes(key)) continue;
+      if (value === "" || value === null || value === undefined) continue;
 
       setClauses.push(`\`${key}\` = ?`);
       setValues.push(value);
@@ -199,37 +243,33 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
       });
     }
 
-    // Optional: always bump updated_at
     setClauses.push("updated_at = NOW()");
-
-    // --------- 2) Build WHERE clause from ids + filters ----------
 
     const whereParts = [];
     const whereValues = [];
 
-    // Normalize ids
     if (Array.isArray(ids) && ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
       whereParts.push(`product_id IN (${placeholders})`);
       whereValues.push(...ids);
     } else {
-      ids = null; // treat anything else as "no IDs"
+      ids = null;
     }
 
-    // Filters
     if (filters && typeof filters === "object") {
-      // columns we allow in filters (for safety)
       const filterableColumns = [
         "product_id",
         "name",
         "mrp",
         "price",
+        "wood_type",
         "front_wrap",
         "back_wrap",
         "front_carving",
         "back_carving",
         "width_in",
         "height_in",
+        "active",           // ✅ added
         "created_at",
         "updated_at",
       ];
@@ -241,18 +281,15 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
         const val = String(rawVal);
 
         if (["mrp", "price", "width_in", "height_in", "product_id"].includes(key)) {
-          // numeric / exact filters
           whereParts.push(`\`${key}\` = ?`);
           whereValues.push(val);
         } else {
-          // string-ish filters -> LIKE
           whereParts.push(`\`${key}\` LIKE ?`);
           whereValues.push(`%${val}%`);
         }
       }
     }
 
-    // If ids = null and no filters => this will update ALL rows (your requirement)
     const whereClause =
       whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
 
@@ -262,7 +299,6 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
       ${whereClause}
     `;
 
-    // Final params: first SET values, then WHERE values
     const params = [...setValues, ...whereValues];
 
     const [result] = await db.query(sql, params);
@@ -281,7 +317,73 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
   }
 });
 
-// ---Laminate Products Routes------------------------------------------------------------------------
+/* ==================================================================
+   FINISHED PRODUCT — CREATE (no image file)
+   ================================================================== */
+
+router.post("/upload", verifyAdminToken, async (req, res) => {
+  try {
+    const {
+      name,
+      mrp,
+      price,
+      wood_type,
+      front_wrap,
+      back_wrap,
+      front_carving,
+      back_carving,
+      width_in,
+      height_in,
+      active,                 // ✅ added (in case admin sends it)
+    } = req.body;
+
+    const allowedWoodTypes = ["jungle wood", "saagon"];
+    const safeWoodType = allowedWoodTypes.includes(wood_type)
+      ? wood_type
+      : "jungle wood";
+
+    const isActive =
+      active === "0" || active === 0 || active === false ? 0 : 1; // ✅ normalize active
+
+    const sql = `
+      INSERT INTO products 
+        (name, mrp, price, wood_type, front_wrap, back_wrap, front_carving, back_carving, width_in, height_in, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `;
+
+    const params = [
+      name || null,
+      mrp || null,
+      price || null,
+      safeWoodType,
+      front_wrap || null,
+      back_wrap || null,
+      front_carving || null,
+      back_carving || null,
+      width_in || null,
+      height_in || null,
+      isActive,               // ✅ added
+    ];
+
+    const [result] = await db.query(sql, params);
+
+    res.json({
+      success: true,
+      product_id: result.insertId,
+      message: "Product created successfully",
+    });
+  } catch (err) {
+    console.error("POST /admin/product/upload failed:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error while creating product." });
+  }
+});
+
+
+/* ==================================================================
+   LAMINATES — TABLE VIEW / FILTER / BULK UPDATE
+   ================================================================== */
 
 router.get("/laminate/get/table", verifyAdminToken, async (req, res) => {
   try {
@@ -309,7 +411,7 @@ router.get("/laminate/get/table", verifyAdminToken, async (req, res) => {
       hasMore,
     });
   } catch (err) {
-    console.error("GET /admin/laminates failed:", err);
+    console.error("GET /admin/product/laminate/get/table failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -364,11 +466,10 @@ router.get("/laminate/get/filter", verifyAdminToken, async (req, res) => {
 
     res.json({ success: true, total: totalCount, hasMore, items: rows });
   } catch (err) {
-    console.error("GET /admin/laminate/get/filter failed:", err);
+    console.error("GET /admin/product/laminate/get/filter failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
 
 router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
   try {
@@ -381,7 +482,6 @@ router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
       });
     }
 
-    // Columns that can be edited in laminates
     const allowedColumns = [
       "name",
       "image_path",
@@ -411,7 +511,6 @@ router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
     const whereParts = [];
     const whereValues = [];
 
-    // IDs filter (selected rows)
     if (Array.isArray(ids) && ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
       whereParts.push(`id IN (${placeholders})`);
@@ -420,7 +519,6 @@ router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
       ids = null;
     }
 
-    // Additional filters (from table header filters)
     if (filters && typeof filters === "object") {
       const filterableColumns = [
         "id",
@@ -473,7 +571,58 @@ router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
   }
 });
 
-// ---Carving Products Routes------------------------------------------------------------------------
+/* ==================================================================
+   LAMINATES — CREATE with IMAGE UPLOAD
+   ================================================================== */
+
+router.post(
+  "/laminate/upload",
+  verifyAdminToken,
+  uploadLaminate.single("image_path"),
+  async (req, res) => {
+    try {
+      const { name, price, discount_perc, active } = req.body;
+
+      const relativePath = req.file
+        ? path
+            .join("assets", "products", "laminates", req.file.filename)
+            .replace(/\\/g, "/")
+        : null;
+
+      const sql = `
+        INSERT INTO laminates (name, image_path, price, discount_perc, active)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+
+      const params = [
+        name || null,
+        relativePath,
+        price || null,
+        discount_perc || 0,
+        active ? Number(active) : 1,
+      ];
+
+      const [result] = await db.query(sql, params);
+
+      res.json({
+        success: true,
+        id: result.insertId,
+        image_path: relativePath,
+        message: "Laminate created successfully",
+      });
+    } catch (err) {
+      console.error("POST /admin/product/laminate/upload failed:", err);
+      res.status(500).json({
+        success: false,
+        message: "Server error while creating laminate.",
+      });
+    }
+  }
+);
+
+/* ==================================================================
+   CARVINGS — TABLE VIEW / FILTER / BULK UPDATE
+   ================================================================== */
 
 router.get("/carving/get/table", verifyAdminToken, async (req, res) => {
   try {
@@ -501,7 +650,7 @@ router.get("/carving/get/table", verifyAdminToken, async (req, res) => {
       hasMore,
     });
   } catch (err) {
-    console.error("GET /admin/carvings failed:", err);
+    console.error("GET /admin/product/carving/get/table failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -556,11 +705,10 @@ router.get("/carving/get/filter", verifyAdminToken, async (req, res) => {
 
     res.json({ success: true, total: totalCount, hasMore, items: rows });
   } catch (err) {
-    console.error("GET /admin/carving/get/filter failed:", err);
+    console.error("GET /admin/product/carving/get/filter failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
 
 router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
   try {
@@ -602,7 +750,6 @@ router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
     const whereParts = [];
     const whereValues = [];
 
-    // IDs filter
     if (Array.isArray(ids) && ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
       whereParts.push(`id IN (${placeholders})`);
@@ -611,7 +758,6 @@ router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
       ids = null;
     }
 
-    // Header filters
     if (filters && typeof filters === "object") {
       const filterableColumns = [
         "id",
@@ -664,5 +810,53 @@ router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
   }
 });
 
+/* ==================================================================
+   CARVINGS — CREATE with IMAGE UPLOAD
+   ================================================================== */
+
+router.post(
+  "/carving/upload",
+  verifyAdminToken,
+  uploadCarving.single("image_path"),
+  async (req, res) => {
+    try {
+      const { name, price, discount_perc, active } = req.body;
+
+      const relativePath = req.file
+        ? path
+            .join("assets", "products", "carvings", req.file.filename)
+            .replace(/\\/g, "/")
+        : null;
+
+      const sql = `
+        INSERT INTO carvings (name, image_path, price, discount_perc, active)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+
+      const params = [
+        name || null,
+        relativePath,
+        price || null,
+        discount_perc || 0,
+        active ? Number(active) : 1,
+      ];
+
+      const [result] = await db.query(sql, params);
+
+      res.json({
+        success: true,
+        id: result.insertId,
+        image_path: relativePath,
+        message: "Carving created successfully",
+      });
+    } catch (err) {
+      console.error("POST /admin/product/carving/upload failed:", err);
+      res.status(500).json({
+        success: false,
+        message: "Server error while creating carving.",
+      });
+    }
+  }
+);
 
 export default router;

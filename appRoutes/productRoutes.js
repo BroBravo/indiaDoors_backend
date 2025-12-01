@@ -12,13 +12,20 @@ const router = express.Router();
 router.get("/productList", async (req, res) => {
   const query = `
     SELECT 
-      p.name, p.image, p.mrp, p.price, 
-      fw.image_path AS front_wrap, 
-      bw.image_path AS back_wrap, 
-      p.width_in, p.height_in 
-    FROM products p 
+      p.product_id,            -- ✅ so React key works
+      p.name,
+      p.mrp,
+      p.price,
+      p.wood_type,             -- optional, in case you want it in UI
+      fw.image_path AS front_wrap,  -- ✅ this is now the image used on card
+      bw.image_path AS back_wrap,   -- (kept in case you need it later)
+      p.width_in,
+      p.height_in
+    FROM products p
     LEFT JOIN laminates fw ON p.front_wrap = fw.name 
     LEFT JOIN laminates bw ON p.back_wrap = bw.name
+    WHERE p.active = 1              -- ✅ only active products
+    ORDER BY p.product_id ASC;
   `;
 
   try {
@@ -29,6 +36,7 @@ router.get("/productList", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
+
 
 // Get distinct dimensions (height and width)
 router.get("/dimensions", async (req, res) => {
