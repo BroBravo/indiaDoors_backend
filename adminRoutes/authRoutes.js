@@ -367,7 +367,6 @@ router.post("/bulk-update", verifyAdmin, async (req, res) => {
   try {
     const { ids, filters, data } = req.body;
 
-    // ids must be a non-empty array
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: "ids array is required" });
     }
@@ -376,7 +375,6 @@ router.post("/bulk-update", verifyAdmin, async (req, res) => {
       return res.status(400).json({ message: "data object is required" });
     }
 
-    // Build SET clause dynamically based on provided fields
     const setClauses = [];
     const params = [];
 
@@ -396,13 +394,24 @@ router.post("/bulk-update", verifyAdmin, async (req, res) => {
     }
 
     if (data.is_active !== undefined) {
-      // in DB we usually store TINYINT(1) → 1/0
+      let isActiveNumeric;
+
+      if (typeof data.is_active === "boolean") {
+        isActiveNumeric = data.is_active ? 1 : 0;
+      } else if (typeof data.is_active === "number") {
+        isActiveNumeric = data.is_active ? 1 : 0;
+      } else if (typeof data.is_active === "string") {
+        const val = data.is_active.toLowerCase().trim();
+        isActiveNumeric = val === "1" || val === "true" ? 1 : 0;
+      } else {
+        isActiveNumeric = 0;
+      }
+
       setClauses.push("is_active = ?");
-      params.push(data.is_active ? 1 : 0);
+      params.push(isActiveNumeric);
     }
 
     if (data.password !== undefined && data.password !== "") {
-      // hash the new password
       const hashed = await bcrypt.hash(data.password, 10);
       setClauses.push("password_hash = ?");
       params.push(hashed);
@@ -412,7 +421,6 @@ router.post("/bulk-update", verifyAdmin, async (req, res) => {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
-    // Build WHERE id IN (...)
     const idPlaceholders = ids.map(() => "?").join(",");
     const sql = `
       UPDATE admin_users
@@ -434,5 +442,6 @@ router.post("/bulk-update", verifyAdmin, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 export default router;
