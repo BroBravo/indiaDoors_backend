@@ -111,17 +111,99 @@ async function requireAdminForSignup(req, res, next) {
    ================================================================== */
 
 // Admin login route
+// router.post("/login", async (req, res) => {
+//   const { loginId, password } = req.body; // `loginId` can be either username or phone
+
+//   if (!loginId || !password) {
+//     return res.status(400).json({
+//       success: false,
+//       message: "Username/Phone and password are required",
+//     });
+//   }
+
+//   try {
+//     // Step 1: Detect whether input is phone or username
+//     const field = /^\d+$/.test(loginId) ? "phone" : "username";
+
+//     // Step 2: Fetch user from admin_users table
+//     const query = `
+//       SELECT id, username, phone, password_hash, role, is_active
+//       FROM admin_users
+//       WHERE ${field} = ?
+//       LIMIT 1
+//     `;
+//     const [rows] = await db.query(query, [loginId]);
+
+//     if (rows.length === 0) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "User not found" });
+//     }
+
+//     const user = rows[0];
+
+//     // Step 3: Check if account is active
+//     if (!user.is_active) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Account is disabled" });
+//     }
+
+//     // Step 4: Validate password
+//     const isMatch = await bcrypt.compare(password, user.password_hash);
+//     if (!isMatch) {
+//       return res
+//         .status(401)
+//         .json({ success: false, message: "Invalid password" });
+//     }
+
+//     // Step 5: Issue JWT token
+//     const tokenPayload = {
+//       id: user.id,
+//       username: user.username,
+//       role: user.role,
+//     };
+
+//     const token = jwt.sign(tokenPayload, SECRET_KEY, { expiresIn: "1h" });
+
+//     // Step 6: Set token in cookie
+//     res.cookie("admin_token", token, {
+//       httpOnly: true,
+//       secure: process.env.NODE_ENV === "production",
+//       sameSite: "Strict",
+//       maxAge: 60 * 60 * 1000, // 1 hour
+//     });
+
+//     return res.json({
+//       success: true,
+//       message: "Login successful",
+//       role: user.role,
+//     });
+//   } catch (err) {
+//     console.error("Admin login error:", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Internal server error" });
+//   }
+// });
 router.post("/login", async (req, res) => {
-  const { loginId, password } = req.body; // `loginId` can be either username or phone
-
-  if (!loginId || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Username/Phone and password are required",
-    });
-  }
-
   try {
+    // Optionally enforce JSON to avoid weird content-types
+    if (!req.is("application/json") && !req.is("application/x-www-form-urlencoded")) {
+      return res
+        .status(415)
+        .json({ success: false, message: "Unsupported Content-Type" });
+    }
+
+    const { loginId, password } = req.body || {};
+
+    if (!loginId || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username/Phone and password are required",
+      });
+    }
+
     // Step 1: Detect whether input is phone or username
     const field = /^\d+$/.test(loginId) ? "phone" : "username";
 
