@@ -9,6 +9,30 @@ import { fileURLToPath } from "url";
 
 const router = express.Router();
 
+/* ==================================================================
+   ROLE MIDDLEWARE — ADMIN + SUPERUSER CAN MODIFY
+   ================================================================== */
+
+function requireAdminOrSuperuser(req, res, next) {
+  // Adjust these depending on what verifyAdminToken sets
+  const role =
+    req.admin?.role ||
+    req.user?.role ||
+    req.adminUser?.role ||
+    req.auth?.role ||
+    req.session?.user?.role;
+
+  if (role !== "admin" && role !== "superuser") {
+    return res.status(403).json({
+      success: false,
+      message:
+        "Only admin and superuser roles are allowed to modify product tables.",
+    });
+  }
+
+  next();
+}
+
 // ------------------------------------------------------------------
 //  Common path helpers
 // ------------------------------------------------------------------
@@ -75,7 +99,7 @@ router.get("/get/table", verifyAdminToken, async (req, res) => {
         p.back_carving,
         p.width_in,
         p.height_in,
-        p.active,               -- ✅ added
+        p.active,
         p.created_at,
         p.updated_at,
 
@@ -126,7 +150,11 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
       if (value !== undefined && value !== "") {
         const type = col.Type.toLowerCase();
 
-        if (type.includes("char") || type.includes("text") || type.includes("blob")) {
+        if (
+          type.includes("char") ||
+          type.includes("text") ||
+          type.includes("blob")
+        ) {
           filters.push(`p.\`${colName}\` LIKE ?`);
           values.push(`${value}%`);
         } else if (type.includes("date") || type.includes("timestamp")) {
@@ -157,7 +185,7 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
         p.back_carving,
         p.width_in,
         p.height_in,
-        p.active,               -- ✅ added
+        p.active,
         p.created_at,
         p.updated_at,
 
@@ -200,65 +228,22 @@ router.get("/get/filter", verifyAdminToken, async (req, res) => {
   }
 });
 
-router.post("/bulk-update", verifyAdminToken, async (req, res) => {
-  try {
-    let { ids, filters, data } = req.body;
+router.post(
+  "/bulk-update",
+  verifyAdminToken,
+  requireAdminOrSuperuser,
+  async (req, res) => {
+    try {
+      let { ids, filters, data } = req.body;
 
-    if (!data || typeof data !== "object") {
-      return res.status(400).json({
-        success: false,
-        message: "No update data provided.",
-      });
-    }
+      if (!data || typeof data !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "No update data provided.",
+        });
+      }
 
-    const allowedColumns = [
-      "name",
-      "mrp",
-      "price",
-      "wood_type",
-      "front_wrap",
-      "back_wrap",
-      "front_carving",
-      "back_carving",
-      "width_in",
-      "height_in",
-      "active",             // ✅ added
-    ];
-
-    const setClauses = [];
-    const setValues = [];
-
-    for (const [key, value] of Object.entries(data)) {
-      if (!allowedColumns.includes(key)) continue;
-      if (value === "" || value === null || value === undefined) continue;
-
-      setClauses.push(`\`${key}\` = ?`);
-      setValues.push(value);
-    }
-
-    if (setClauses.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields to update.",
-      });
-    }
-
-    setClauses.push("updated_at = NOW()");
-
-    const whereParts = [];
-    const whereValues = [];
-
-    if (Array.isArray(ids) && ids.length > 0) {
-      const placeholders = ids.map(() => "?").join(",");
-      whereParts.push(`product_id IN (${placeholders})`);
-      whereValues.push(...ids);
-    } else {
-      ids = null;
-    }
-
-    if (filters && typeof filters === "object") {
-      const filterableColumns = [
-        "product_id",
+      const allowedColumns = [
         "name",
         "mrp",
         "price",
@@ -269,117 +254,174 @@ router.post("/bulk-update", verifyAdminToken, async (req, res) => {
         "back_carving",
         "width_in",
         "height_in",
-        "active",           // ✅ added
-        "created_at",
-        "updated_at",
+        "active",
       ];
 
-      for (const [key, rawVal] of Object.entries(filters)) {
-        if (!rawVal) continue;
-        if (!filterableColumns.includes(key)) continue;
+      const setClauses = [];
+      const setValues = [];
 
-        const val = String(rawVal);
+      for (const [key, value] of Object.entries(data)) {
+        if (!allowedColumns.includes(key)) continue;
+        if (value === "" || value === null || value === undefined) continue;
 
-        if (["mrp", "price", "width_in", "height_in", "product_id"].includes(key)) {
-          whereParts.push(`\`${key}\` = ?`);
-          whereValues.push(val);
-        } else {
-          whereParts.push(`\`${key}\` LIKE ?`);
-          whereValues.push(`%${val}%`);
+        setClauses.push(`\`${key}\` = ?`);
+        setValues.push(value);
+      }
+
+      if (setClauses.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid fields to update.",
+        });
+      }
+
+      setClauses.push("updated_at = NOW()");
+
+      const whereParts = [];
+      const whereValues = [];
+
+      if (Array.isArray(ids) && ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(",");
+        whereParts.push(`product_id IN (${placeholders})`);
+        whereValues.push(...ids);
+      } else {
+        ids = null;
+      }
+
+      if (filters && typeof filters === "object") {
+        const filterableColumns = [
+          "product_id",
+          "name",
+          "mrp",
+          "price",
+          "wood_type",
+          "front_wrap",
+          "back_wrap",
+          "front_carving",
+          "back_carving",
+          "width_in",
+          "height_in",
+          "active",
+          "created_at",
+          "updated_at",
+        ];
+
+        for (const [key, rawVal] of Object.entries(filters)) {
+          if (!rawVal) continue;
+          if (!filterableColumns.includes(key)) continue;
+
+          const val = String(rawVal);
+
+          if (
+            ["mrp", "price", "width_in", "height_in", "product_id"].includes(
+              key
+            )
+          ) {
+            whereParts.push(`\`${key}\` = ?`);
+            whereValues.push(val);
+          } else {
+            whereParts.push(`\`${key}\` LIKE ?`);
+            whereValues.push(`%${val}%`);
+          }
         }
       }
+
+      const whereClause =
+        whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+      const sql = `
+        UPDATE products
+        SET ${setClauses.join(", ")}
+        ${whereClause}
+      `;
+
+      const params = [...setValues, ...whereValues];
+
+      const [result] = await db.query(sql, params);
+
+      return res.json({
+        success: true,
+        affectedRows: result.affectedRows,
+        message: `Updated ${result.affectedRows} product(s).`,
+      });
+    } catch (err) {
+      console.error("POST /admin/product/bulk-update failed:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server error while updating products.",
+      });
     }
-
-    const whereClause =
-      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
-
-    const sql = `
-      UPDATE products
-      SET ${setClauses.join(", ")}
-      ${whereClause}
-    `;
-
-    const params = [...setValues, ...whereValues];
-
-    const [result] = await db.query(sql, params);
-
-    return res.json({
-      success: true,
-      affectedRows: result.affectedRows,
-      message: `Updated ${result.affectedRows} product(s).`,
-    });
-  } catch (err) {
-    console.error("POST /admin/product/bulk-update failed:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error while updating products.",
-    });
   }
-});
+);
 
 /* ==================================================================
    FINISHED PRODUCT — CREATE (no image file)
    ================================================================== */
 
-router.post("/upload", verifyAdminToken, async (req, res) => {
-  try {
-    const {
-      name,
-      mrp,
-      price,
-      wood_type,
-      front_wrap,
-      back_wrap,
-      front_carving,
-      back_carving,
-      width_in,
-      height_in,
-      active,                 // ✅ added (in case admin sends it)
-    } = req.body;
+router.post(
+  "/upload",
+  verifyAdminToken,
+  requireAdminOrSuperuser,
+  async (req, res) => {
+    try {
+      const {
+        name,
+        mrp,
+        price,
+        wood_type,
+        front_wrap,
+        back_wrap,
+        front_carving,
+        back_carving,
+        width_in,
+        height_in,
+        active,
+      } = req.body;
 
-    const allowedWoodTypes = ["jungle wood", "saagon"];
-    const safeWoodType = allowedWoodTypes.includes(wood_type)
-      ? wood_type
-      : "jungle wood";
+      const allowedWoodTypes = ["jungle wood", "saagon"];
+      const safeWoodType = allowedWoodTypes.includes(wood_type)
+        ? wood_type
+        : "jungle wood";
 
-    const isActive =
-      active === "0" || active === 0 || active === false ? 0 : 1; // ✅ normalize active
+      const isActive =
+        active === "0" || active === 0 || active === false ? 0 : 1;
 
-    const sql = `
-      INSERT INTO products 
-        (name, mrp, price, wood_type, front_wrap, back_wrap, front_carving, back_carving, width_in, height_in, active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-    `;
+      const sql = `
+        INSERT INTO products 
+          (name, mrp, price, wood_type, front_wrap, back_wrap, front_carving, back_carving, width_in, height_in, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      `;
 
-    const params = [
-      name || null,
-      mrp || null,
-      price || null,
-      safeWoodType,
-      front_wrap || null,
-      back_wrap || null,
-      front_carving || null,
-      back_carving || null,
-      width_in || null,
-      height_in || null,
-      isActive,               // ✅ added
-    ];
+      const params = [
+        name || null,
+        mrp || null,
+        price || null,
+        safeWoodType,
+        front_wrap || null,
+        back_wrap || null,
+        front_carving || null,
+        back_carving || null,
+        width_in || null,
+        height_in || null,
+        isActive,
+      ];
 
-    const [result] = await db.query(sql, params);
+      const [result] = await db.query(sql, params);
 
-    res.json({
-      success: true,
-      product_id: result.insertId,
-      message: "Product created successfully",
-    });
-  } catch (err) {
-    console.error("POST /admin/product/upload failed:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error while creating product." });
+      res.json({
+        success: true,
+        product_id: result.insertId,
+        message: "Product created successfully",
+      });
+    } catch (err) {
+      console.error("POST /admin/product/upload failed:", err);
+      res.status(500).json({
+        success: false,
+        message: "Server error while creating product.",
+      });
+    }
   }
-});
-
+);
 
 /* ==================================================================
    LAMINATES — TABLE VIEW / FILTER / BULK UPDATE
@@ -471,105 +513,104 @@ router.get("/laminate/get/filter", verifyAdminToken, async (req, res) => {
   }
 });
 
-router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
-  try {
-    let { ids, filters, data } = req.body;
+router.post(
+  "/laminate/bulk-update",
+  verifyAdminToken,
+  requireAdminOrSuperuser,
+  async (req, res) => {
+    try {
+      let { ids, filters, data } = req.body;
 
-    if (!data || typeof data !== "object") {
-      return res.status(400).json({
-        success: false,
-        message: "No update data provided.",
-      });
-    }
+      if (!data || typeof data !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "No update data provided.",
+        });
+      }
 
-    const allowedColumns = [
-      "name",
-      "image_path",
-      "price",
-      "discount_perc",
-      "active",
-    ];
+      const allowedColumns = ["name", "image_path", "price", "discount_perc", "active"];
 
-    const setClauses = [];
-    const setValues = [];
+      const setClauses = [];
+      const setValues = [];
 
-    for (const [key, value] of Object.entries(data)) {
-      if (!allowedColumns.includes(key)) continue;
-      if (value === "" || value === null || value === undefined) continue;
+      for (const [key, value] of Object.entries(data)) {
+        if (!allowedColumns.includes(key)) continue;
+        if (value === "" || value === null || value === undefined) continue;
 
-      setClauses.push(`\`${key}\` = ?`);
-      setValues.push(value);
-    }
+        setClauses.push(`\`${key}\` = ?`);
+        setValues.push(value);
+      }
 
-    if (setClauses.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields to update.",
-      });
-    }
+      if (setClauses.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid fields to update.",
+        });
+      }
 
-    const whereParts = [];
-    const whereValues = [];
+      const whereParts = [];
+      const whereValues = [];
 
-    if (Array.isArray(ids) && ids.length > 0) {
-      const placeholders = ids.map(() => "?").join(",");
-      whereParts.push(`id IN (${placeholders})`);
-      whereValues.push(...ids);
-    } else {
-      ids = null;
-    }
+      if (Array.isArray(ids) && ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(",");
+        whereParts.push(`id IN (${placeholders})`);
+        whereValues.push(...ids);
+      } else {
+        ids = null;
+      }
 
-    if (filters && typeof filters === "object") {
-      const filterableColumns = [
-        "id",
-        "name",
-        "image_path",
-        "price",
-        "discount_perc",
-        "active",
-      ];
+      if (filters && typeof filters === "object") {
+        const filterableColumns = [
+          "id",
+          "name",
+          "image_path",
+          "price",
+          "discount_perc",
+          "active",
+        ];
 
-      for (const [key, rawVal] of Object.entries(filters)) {
-        if (!rawVal) continue;
-        if (!filterableColumns.includes(key)) continue;
+        for (const [key, rawVal] of Object.entries(filters)) {
+          if (!rawVal) continue;
+          if (!filterableColumns.includes(key)) continue;
 
-        const val = String(rawVal);
+          const val = String(rawVal);
 
-        if (["id", "price", "discount_perc", "active"].includes(key)) {
-          whereParts.push(`\`${key}\` = ?`);
-          whereValues.push(val);
-        } else {
-          whereParts.push(`\`${key}\` LIKE ?`);
-          whereValues.push(`%${val}%`);
+          if (["id", "price", "discount_perc", "active"].includes(key)) {
+            whereParts.push(`\`${key}\` = ?`);
+            whereValues.push(val);
+          } else {
+            whereParts.push(`\`${key}\` LIKE ?`);
+            whereValues.push(`%${val}%`);
+          }
         }
       }
+
+      const whereClause =
+        whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+      const sql = `
+        UPDATE laminates
+        SET ${setClauses.join(", ")}
+        ${whereClause}
+      `;
+
+      const params = [...setValues, ...whereValues];
+      const [result] = await db.query(sql, params);
+
+      return res.json({
+        success: true,
+        affectedRows: result.affectedRows,
+        message: `Updated ${result.affectedRows} laminate(s).`,
+      });
+    } catch (err) {
+      console.error("POST /admin/product/laminate/bulk-update failed:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server error while updating laminates.",
+      });
     }
-
-    const whereClause =
-      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
-
-    const sql = `
-      UPDATE laminates
-      SET ${setClauses.join(", ")}
-      ${whereClause}
-    `;
-
-    const params = [...setValues, ...whereValues];
-    const [result] = await db.query(sql, params);
-
-    return res.json({
-      success: true,
-      affectedRows: result.affectedRows,
-      message: `Updated ${result.affectedRows} laminate(s).`,
-    });
-  } catch (err) {
-    console.error("POST /admin/product/laminate/bulk-update failed:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error while updating laminates.",
-    });
   }
-});
+);
 
 /* ==================================================================
    LAMINATES — CREATE with IMAGE UPLOAD
@@ -578,6 +619,7 @@ router.post("/laminate/bulk-update", verifyAdminToken, async (req, res) => {
 router.post(
   "/laminate/upload",
   verifyAdminToken,
+  requireAdminOrSuperuser,
   uploadLaminate.single("image_path"),
   async (req, res) => {
     try {
@@ -710,105 +752,104 @@ router.get("/carving/get/filter", verifyAdminToken, async (req, res) => {
   }
 });
 
-router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
-  try {
-    let { ids, filters, data } = req.body;
+router.post(
+  "/carving/bulk-update",
+  verifyAdminToken,
+  requireAdminOrSuperuser,
+  async (req, res) => {
+    try {
+      let { ids, filters, data } = req.body;
 
-    if (!data || typeof data !== "object") {
-      return res.status(400).json({
-        success: false,
-        message: "No update data provided.",
-      });
-    }
+      if (!data || typeof data !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "No update data provided.",
+        });
+      }
 
-    const allowedColumns = [
-      "name",
-      "image_path",
-      "price",
-      "discount_perc",
-      "active",
-    ];
+      const allowedColumns = ["name", "image_path", "price", "discount_perc", "active"];
 
-    const setClauses = [];
-    const setValues = [];
+      const setClauses = [];
+      const setValues = [];
 
-    for (const [key, value] of Object.entries(data)) {
-      if (!allowedColumns.includes(key)) continue;
-      if (value === "" || value === null || value === undefined) continue;
+      for (const [key, value] of Object.entries(data)) {
+        if (!allowedColumns.includes(key)) continue;
+        if (value === "" || value === null || value === undefined) continue;
 
-      setClauses.push(`\`${key}\` = ?`);
-      setValues.push(value);
-    }
+        setClauses.push(`\`${key}\` = ?`);
+        setValues.push(value);
+      }
 
-    if (setClauses.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields to update.",
-      });
-    }
+      if (setClauses.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid fields to update.",
+        });
+      }
 
-    const whereParts = [];
-    const whereValues = [];
+      const whereParts = [];
+      const whereValues = [];
 
-    if (Array.isArray(ids) && ids.length > 0) {
-      const placeholders = ids.map(() => "?").join(",");
-      whereParts.push(`id IN (${placeholders})`);
-      whereValues.push(...ids);
-    } else {
-      ids = null;
-    }
+      if (Array.isArray(ids) && ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(",");
+        whereParts.push(`id IN (${placeholders})`);
+        whereValues.push(...ids);
+      } else {
+        ids = null;
+      }
 
-    if (filters && typeof filters === "object") {
-      const filterableColumns = [
-        "id",
-        "name",
-        "image_path",
-        "price",
-        "discount_perc",
-        "active",
-      ];
+      if (filters && typeof filters === "object") {
+        const filterableColumns = [
+          "id",
+          "name",
+          "image_path",
+          "price",
+          "discount_perc",
+          "active",
+        ];
 
-      for (const [key, rawVal] of Object.entries(filters)) {
-        if (!rawVal) continue;
-        if (!filterableColumns.includes(key)) continue;
+        for (const [key, rawVal] of Object.entries(filters)) {
+          if (!rawVal) continue;
+          if (!filterableColumns.includes(key)) continue;
 
-        const val = String(rawVal);
+          const val = String(rawVal);
 
-        if (["id", "price", "discount_perc", "active"].includes(key)) {
-          whereParts.push(`\`${key}\` = ?`);
-          whereValues.push(val);
-        } else {
-          whereParts.push(`\`${key}\` LIKE ?`);
-          whereValues.push(`%${val}%`);
+          if (["id", "price", "discount_perc", "active"].includes(key)) {
+            whereParts.push(`\`${key}\` = ?`);
+            whereValues.push(val);
+          } else {
+            whereParts.push(`\`${key}\` LIKE ?`);
+            whereValues.push(`%${val}%`);
+          }
         }
       }
+
+      const whereClause =
+        whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+      const sql = `
+        UPDATE carvings
+        SET ${setClauses.join(", ")}
+        ${whereClause}
+      `;
+
+      const params = [...setValues, ...whereValues];
+      const [result] = await db.query(sql, params);
+
+      return res.json({
+        success: true,
+        affectedRows: result.affectedRows,
+        message: `Updated ${result.affectedRows} carving(s).`,
+      });
+    } catch (err) {
+      console.error("POST /admin/product/carving/bulk-update failed:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Server error while updating carvings.",
+      });
     }
-
-    const whereClause =
-      whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
-
-    const sql = `
-      UPDATE carvings
-      SET ${setClauses.join(", ")}
-      ${whereClause}
-    `;
-
-    const params = [...setValues, ...whereValues];
-    const [result] = await db.query(sql, params);
-
-    return res.json({
-      success: true,
-      affectedRows: result.affectedRows,
-      message: `Updated ${result.affectedRows} carving(s).`,
-    });
-  } catch (err) {
-    console.error("POST /admin/product/carving/bulk-update failed:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error while updating carvings.",
-    });
   }
-});
+);
 
 /* ==================================================================
    CARVINGS — CREATE with IMAGE UPLOAD
@@ -817,6 +858,7 @@ router.post("/carving/bulk-update", verifyAdminToken, async (req, res) => {
 router.post(
   "/carving/upload",
   verifyAdminToken,
+  requireAdminOrSuperuser,
   uploadCarving.single("image_path"),
   async (req, res) => {
     try {
