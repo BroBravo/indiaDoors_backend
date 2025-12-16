@@ -2,6 +2,8 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "../config/connection1.js";
+import crypto from "crypto";
+import { RSA_PRIVATE_KEY, RSA_PUBLIC_KEY } from "../config/rsaKeys.js";
 
 const router = express.Router();
 const SECRET_KEY = process.env.JWT_SECRET || "your_secret_key";
@@ -106,96 +108,61 @@ async function requireAdminForSignup(req, res, next) {
   }
 }
 
+// PUBLIC KEY FOR FRONTEND (RSA)
+// ==================================================================
+router.get("/public-key", (req, res) => {
+  // You can also sanitize this to just send the PEM as-is
+  return res.json({ publicKey: RSA_PUBLIC_KEY });
+});
+
 /* ==================================================================
    ADMIN LOGIN
    ================================================================== */
 
-// Admin login route
-// router.post("/login", async (req, res) => {
-//   const { loginId, password } = req.body; // `loginId` can be either username or phone
-
-//   if (!loginId || !password) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "Username/Phone and password are required",
-//     });
-//   }
-
-//   try {
-//     // Step 1: Detect whether input is phone or username
-//     const field = /^\d+$/.test(loginId) ? "phone" : "username";
-
-//     // Step 2: Fetch user from admin_users table
-//     const query = `
-//       SELECT id, username, phone, password_hash, role, is_active
-//       FROM admin_users
-//       WHERE ${field} = ?
-//       LIMIT 1
-//     `;
-//     const [rows] = await db.query(query, [loginId]);
-
-//     if (rows.length === 0) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "User not found" });
-//     }
-
-//     const user = rows[0];
-
-//     // Step 3: Check if account is active
-//     if (!user.is_active) {
-//       return res
-//         .status(403)
-//         .json({ success: false, message: "Account is disabled" });
-//     }
-
-//     // Step 4: Validate password
-//     const isMatch = await bcrypt.compare(password, user.password_hash);
-//     if (!isMatch) {
-//       return res
-//         .status(401)
-//         .json({ success: false, message: "Invalid password" });
-//     }
-
-//     // Step 5: Issue JWT token
-//     const tokenPayload = {
-//       id: user.id,
-//       username: user.username,
-//       role: user.role,
-//     };
-
-//     const token = jwt.sign(tokenPayload, SECRET_KEY, { expiresIn: "1h" });
-
-//     // Step 6: Set token in cookie
-//     res.cookie("admin_token", token, {
-//       httpOnly: true,
-//       secure: process.env.NODE_ENV === "production",
-//       sameSite: "Strict",
-//       maxAge: 60 * 60 * 1000, // 1 hour
-//     });
-
-//     return res.json({
-//       success: true,
-//       message: "Login successful",
-//       role: user.role,
-//     });
-//   } catch (err) {
-//     console.error("Admin login error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Internal server error" });
-//   }
-// });
 router.post("/login", async (req, res) => {
   try {
-    // Optionally enforce JSON to avoid weird content-types
-    if (!req.is("application/json") && !req.is("application/x-www-form-urlencoded")) {
+    if (
+      !req.is("application/json") &&
+      !req.is("application/x-www-form-urlencoded")
+    ) {
       return res
         .status(415)
         .json({ success: false, message: "Unsupported Content-Type" });
     }
 
-    const { loginId, password } = req.body || {};
+    const { encrypted } = req.body || {};
+
+    if (!encrypted) {
+      return res.status(400).json({
+        success: false,
+        message: "Encrypted payload is required",
+      });
+    }
+
+    // 1️⃣ Decrypt using RSA private key
+    let loginId, password;
+    try {
+      const buffer = Buffer.from(encrypted, "base64");
+
+      const decrypted = crypto.privateDecrypt(
+        {
+          key: RSA_PRIVATE_KEY,
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: "sha256", // match frontend
+        },
+        buffer
+      );
+
+
+      const parsed = JSON.parse(decrypted.toString("utf8"));
+      loginId = parsed.loginId;
+      password = parsed.password;
+    } catch (e) {
+      console.error("RSA decrypt failed:", e);
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid encrypted payload" });
+    }
 
     if (!loginId || !password) {
       return res.status(400).json({
@@ -203,6 +170,8 @@ router.post("/login", async (req, res) => {
         message: "Username/Phone and password are required",
       });
     }
+
+    // 2️⃣ Your existing logic from here ↓
 
     // Step 1: Detect whether input is phone or username
     const field = /^\d+$/.test(loginId) ? "phone" : "username";
@@ -268,6 +237,7 @@ router.post("/login", async (req, res) => {
       .json({ success: false, message: "Internal server error" });
   }
 });
+
 
 /* ==================================================================
    ADMIN PANEL SIGNUP
