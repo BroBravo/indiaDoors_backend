@@ -1,15 +1,3 @@
-// const express = require("express");
-// const crypto = require("crypto");
-// const  router  = express.Router();
-// const Razorpay = require("razorpay");
-// const db = require("../config/connection1");
-// const verifyUserToken = require('../config/verifyUserToken');
-// require('dotenv').config();
-
-// const razorpay = new Razorpay({
-//   key_id: process.env.RAZORPAY_KEY_ID,     
-//   key_secret: process.env.RAZORPAY_KEY_SECRET,
-// });
 
 import express from "express";
 import crypto from "crypto";
@@ -45,29 +33,105 @@ const razorpay = new Razorpay({
 //   }
 // });
 
-router.post("/checkout",verifyUserToken, async (req, res) => {
-  const { cartItems, totalAmount } = req.body;
-  const userId = req.user.id; // assuming auth middleware
+router.post("/checkout", verifyUserToken, async (req, res) => {
+  const {
+    cartItems,
+    totalAmount,
+    shipping_selection,
+    shipping_address_id,
+    shipping_address,
+  } = req.body;
+
+  const userId = req.user.id; // from verifyUserToken
+
+  // Helper to build "one-line" address text
+  const makeAddressText = (addr) => {
+  if (!addr || typeof addr !== "object") return null;
+
+  // Try multiple possible keys for first line
+  const line =
+    addr.address_line ||
+    addr.address_line1 ||
+    addr.address1 ||
+    addr.address ||
+    addr.street ||
+    addr.line1 ||
+    "";
+
+  // Try multiple possible keys for pincode / postal code
+  const pin =
+    addr.postal_code ||
+    addr.pincode ||
+    addr.pin ||
+    addr.zip ||
+    "";
+
+  const parts = [
+    line,
+    addr.city,
+    addr.state,
+    pin,
+    addr.country,
+  ];
+
+  return parts.filter(Boolean).join(", ");
+};
+
+
+  // Defaults
+  let shippingAddressId = null;
+  let billingAddressId = null;
+  let shippingAddressText = null;
+  let billingAddressText = null;
+
+  // Case 1: custom address during checkout
+  if (shipping_selection === "custom") {
+    shippingAddressId = null;
+    billingAddressId = null;
+
+    const addrText = makeAddressText(shipping_address);
+    shippingAddressText = addrText;
+    billingAddressText = addrText; // 🔁 same for billing as you requested
+  }
+
+  // (Optional) Case 2: if later you support using saved addresses:
+  // else if (shipping_selection === "saved") {
+  //   // e.g. shipping_address_id is an existing address row
+  //   shippingAddressId = shipping_address_id || null;
+  //   billingAddressId = shipping_address_id || null;
+  //   shippingAddressText = makeAddressText(shipping_address);
+  //   billingAddressText = shippingAddressText;
+  // }
 
   try {
-    // 1. Create Order in `orders`
+    // 1️⃣ Create Order in `orders` WITH address snapshot
     const [orderResult] = await db.query(
       `INSERT INTO orders 
-      (user_id, total_amount, currency, order_status, payment_status, payment_method) 
-      VALUES (?, ?, 'INR', 'Pending', 'Pending', 'Online')`,
-      [userId, totalAmount]
+        (user_id, total_amount, currency, order_status, payment_status, payment_method,
+         shipping_address_id, shipping_address_text,
+         billing_address_id,  billing_address_text)
+       VALUES (?, ?, 'INR', 'Pending', 'Pending', 'Online',
+               ?, ?, ?, ?)`,
+      [
+        userId,
+        totalAmount,
+        shippingAddressId,
+        shippingAddressText,
+        billingAddressId,
+        billingAddressText,
+      ]
     );
 
     const orderId = orderResult.insertId;
 
-    // 2. Insert items into ordered_items
+    // 2️⃣ Insert items into ordered_items
     for (const item of cartItems) {
       await db.query(
         `INSERT INTO ordered_items 
-        (order_id, item_amount, item_name, width_in, height_in, 
-        front_wrap, back_wrap, front_wrap_price, back_wrap_price, 
-        front_carving, back_carving, front_carving_price, back_carving_price, quantity) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (order_id, item_amount, item_name, width_in, height_in, 
+           front_wrap, back_wrap, front_wrap_price, back_wrap_price, 
+           front_carving, back_carving, front_carving_price, back_carving_price, quantity) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           item.item_amount,
@@ -87,18 +151,18 @@ router.post("/checkout",verifyUserToken, async (req, res) => {
       );
     }
 
-    // 3. Create Razorpay order
+    // 3️⃣ Create Razorpay order
     const razorpayOrder = await razorpay.orders.create({
-      amount: totalAmount * 100, // in paise
+      amount: totalAmount * 100, // paise
       currency: "INR",
       receipt: `order_${orderId}`,
     });
 
-    // 4. Insert into payments table
+    // 4️⃣ Insert into payments table
     await db.query(
       `INSERT INTO payments 
-      (order_id, razorpay_order_id, payment_gateway, amount, currency, status, payment_mode) 
-      VALUES (?, ?, 'Razorpay', ?, ?, 'Pending', 'Online')`,
+        (order_id, razorpay_order_id, payment_gateway, amount, currency, status, payment_mode) 
+       VALUES (?, ?, 'Razorpay', ?, ?, 'Pending', 'Online')`,
       [orderId, razorpayOrder.id, totalAmount, "INR"]
     );
 
@@ -112,6 +176,7 @@ router.post("/checkout",verifyUserToken, async (req, res) => {
     res.status(500).json({ error: "Checkout failed" });
   }
 });
+
 
 //verify razorpay payment
 router.post("/verify",verifyUserToken,  async (req, res) => {

@@ -24,7 +24,7 @@ router.get("/get/table", verifyAdminToken,  async (req, res) => {
       SELECT
         id, user_id, total_amount, currency,
         order_status, payment_status, payment_method,
-        shipping_address_id, billing_address_id,
+        shipping_address_text, billing_address_text,
         tracking_id, expected_delivery, order_date, updated_at
       FROM orders
       ORDER BY id DESC
