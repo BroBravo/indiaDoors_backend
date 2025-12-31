@@ -29,10 +29,11 @@ import { fileURLToPath } from "url";
 import userRoutes from "./appRoutes/userRoutes.js";
 import authRoutes from "./appRoutes/authRoutes.js";
 import productRoutes from "./appRoutes/productRoutes.js";
-import paymentRoute from "./appRoutes/paymentRoute.js";
-import adminAuthRoute from "./adminRoutes/authRoutes.js";
-import adminOrderRoute from "./adminRoutes/orderRoutes.js";
-import adminProductRoute from "./adminRoutes/productRoutes.js";
+import paymentRoutes from "./appRoutes/paymentRoutes.js";
+import shippingRoutes from "./appRoutes/shippingRoutes.js";
+import adminAuthRoutes from "./adminRoutes/authRoutes.js";
+import adminOrderRoutes from "./adminRoutes/orderRoutes.js";
+import adminProductRoutes from "./adminRoutes/productRoutes.js";
 import noCache from "./config/noCache.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,12 +64,12 @@ app.use(express.json()); // Parse JSON request body
 app.use('/user',noCache,userRoutes);
 app.use('/api',authRoutes);
 app.use('/product',productRoutes);
-app.use('/pay',paymentRoute);
-
+app.use('/pay',paymentRoutes);
+app.use("/shipping", shippingRoutes);
 //Admin specif routes
-app.use('/admin/user',noCache,adminAuthRoute);
-app.use('/admin/order',noCache,adminOrderRoute);
-app.use('/admin/product',noCache,adminProductRoute);
+app.use('/admin/user',noCache,adminAuthRoutes);
+app.use('/admin/order',noCache,adminOrderRoutes);
+app.use('/admin/product',noCache,adminProductRoutes);
 //test comment
 //Static files and uploads
 app.use("/assets", express.static(path.join(__dirname, "assets")));

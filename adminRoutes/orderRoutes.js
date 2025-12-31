@@ -47,6 +47,8 @@ router.get("/get/table", verifyAdminToken,  async (req, res) => {
     console.error("GET /admin/orders failed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
-});
+}); 
+
+
 
 export default router;
