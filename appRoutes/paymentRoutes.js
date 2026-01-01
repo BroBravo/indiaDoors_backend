@@ -1,4 +1,3 @@
-
 import express from "express";
 import crypto from "crypto";
 import Razorpay from "razorpay";
@@ -6,6 +5,8 @@ import dotenv from "dotenv";
 import db from "../config/connection1.js";
 import verifyUserToken from "../config/verifyUserToken.js";
 import { sendAdminOrderConfirmedViaTemplate } from "../services/adminOrderNotification.js";
+import { generateInvoiceForRazorpayOrderId } from "../services/invoiceService.js";
+import { buildAdminOrderEmailPayloadByRazorpayOrderId } from "../services/adminOrderEmailPayload.js";
 
 dotenv.config();
 
@@ -16,132 +17,12 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-function safe(s) {
-  return s == null ? "" : String(s);
-}
-
-function buildItemVariant(row) {
-  const parts = [];
-  if (row.width_in && row.height_in) parts.push(`${row.width_in}x${row.height_in} in`);
-  if (row.front_wrap) parts.push(`Front Wrap: ${row.front_wrap}`);
-  if (row.back_wrap) parts.push(`Back Wrap: ${row.back_wrap}`);
-  if (row.front_carving) parts.push(`Front Carving: ${row.front_carving}`);
-  if (row.back_carving) parts.push(`Back Carving: ${row.back_carving}`);
-  return parts.join(" | ");
-}
-
-// Fetch a payload for email template from DB (order + items + user)
-async function buildAdminOrderEmailPayloadByRazorpayOrderId(razorpay_order_id) {
-  // 1) Find the internal order_id from payments
-  const [[payRow]] = await db.query(
-    `SELECT order_id FROM payments WHERE razorpay_order_id = ? LIMIT 1`,
-    [razorpay_order_id]
-  );
-  if (!payRow) throw new Error("No payment row found for razorpay_order_id");
-
-  const orderDbId = payRow.order_id;
-
-  // 2) Get order
-  const [[orderRow]] = await db.query(
-    `SELECT id, user_id, total_amount, order_status, payment_status, payment_method,
-            shipping_address_text, billing_address_text, tracking_id, order_date
-     FROM orders
-     WHERE id = ?
-     LIMIT 1`,
-    [orderDbId]
-  );
-  if (!orderRow) throw new Error("Order not found");
-
-  // 3) Get items
-  const [itemsRows] = await db.query(
-    `SELECT item_name, item_amount, quantity,
-            width_in, height_in,
-            front_wrap, back_wrap, front_wrap_price, back_wrap_price,
-            front_carving, back_carving, front_carving_price, back_carving_price
-     FROM ordered_items
-     WHERE order_id = ?
-     ORDER BY id ASC`,
-    [orderDbId]
-  );
-
-  // 4) Get user/customer info
-  // IMPORTANT: adjust table name/columns if your user table differs.
-  // I'm assuming a `users` table with id, username, phone, email.
-  let customer = { username: "Customer", phone: "", email: "" };
-  try {
-    const [[u]] = await db.query(
-      `SELECT username, phone, email FROM users WHERE id = ? LIMIT 1`,
-      [orderRow.user_id]
-    );
-    if (u) customer = u;
-  } catch (e) {
-    // If your table isn't `users`, update query to your actual table name.
-  }
-
-  // Build items for template
-  const items = itemsRows.map((r) => {
-    const qty = Number(r.quantity || 1);
-    const unit = Number(r.item_amount || 0);
-    return {
-      name: safe(r.item_name),
-      variant: buildItemVariant(r),
-      qty,
-      unit_price: unit, // used by many templates
-      line_total: unit * qty,
-    };
-  });
-
-  const subtotal = items.reduce((s, it) => s + (Number(it.line_total) || 0), 0);
-  const total = Number(orderRow.total_amount || subtotal);
-
-  // If you want shipping fee/discount, compute/stash them in DB later.
-  const shipping_fee = Math.max(0, total - subtotal);
-  const discount = 0;
-
-  return {
-    order_id: orderRow.id,
-    order_datetime: orderRow.order_date ? new Date(orderRow.order_date).toLocaleString("en-IN") : "",
-    payment_method: safe(orderRow.payment_method),
-    payment_status: safe(orderRow.payment_status),
-    order_status: safe(orderRow.order_status),
-    order_total: total,
-
-    customer_name: safe(customer.username),
-    customer_phone: safe(customer.phone),
-    customer_email: safe(customer.email),
-
-    shipping_address: safe(orderRow.shipping_address_text),
-    billing_address: safe(orderRow.billing_address_text),
-
-    subtotal,
-    shipping_fee,
-    discount,
-    items,
-  };
-}
-
-// router.post("/checkout", async (req, res) => {
-//   const { totalAmount } = req.body;
-
-//   const options = {
-//     amount: Math.round(Number(totalAmount) * 100), // amount in paisa
-//     currency: "INR",
-//     receipt: `order_rcptid_${Date.now()}`,
-//   };
-
-//   try {
-//     const order = await razorpay.orders.create(options);
-//     res.json({ orderId: order.id, amount: order.amount, currency: order.currency });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: "Failed to create order" });
-//   }
-// });
 
 router.post("/checkout", verifyUserToken, async (req, res) => {
   const {
     cartItems,
     totalAmount,
+    shipping_fee,
     shipping_selection,
     shipping_address_id,
     shipping_address,
@@ -212,14 +93,15 @@ router.post("/checkout", verifyUserToken, async (req, res) => {
     // 1️⃣ Create Order in `orders` WITH address snapshot
     const [orderResult] = await db.query(
       `INSERT INTO orders 
-        (user_id, total_amount, currency, order_status, payment_status, payment_method,
+        (user_id, total_amount, shipping_fee, currency, order_status, payment_status, payment_method,
          shipping_address_id, shipping_address_text,
          billing_address_id,  billing_address_text)
-       VALUES (?, ?, 'INR', 'Pending', 'Pending', 'Online',
+       VALUES (?, ?, ?, 'INR', 'Pending', 'Pending', 'Online',
                ?, ?, ?, ?)`,
       [
         userId,
         totalAmount,
+        Number(shipping_fee || 0),
         shippingAddressId,
         shippingAddressText,
         billingAddressId,
@@ -256,9 +138,14 @@ router.post("/checkout", verifyUserToken, async (req, res) => {
       );
     }
 
-    // 3️⃣ Create Razorpay order
+   const amountPaise = Math.round(Number(totalAmount) * 100);
+
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+      return res.status(400).json({ error: "Invalid amount for payment" });
+    }
+
     const razorpayOrder = await razorpay.orders.create({
-      amount: totalAmount * 100, // paise
+      amount: amountPaise, // ✅ integer
       currency: "INR",
       receipt: `order_${orderId}`,
     });
@@ -273,7 +160,7 @@ router.post("/checkout", verifyUserToken, async (req, res) => {
       `INSERT INTO payments 
         (order_id, razorpay_order_id, payment_gateway, amount, currency, status, payment_mode) 
        VALUES (?, ?, 'Razorpay', ?, ?, 'Pending', 'Online')`,
-      [orderId, razorpayOrder.id, totalAmount, "INR"]
+      [orderId, razorpayOrder.id, Number(totalAmount), "INR"]
     );
 
     res.json({
@@ -289,83 +176,127 @@ router.post("/checkout", verifyUserToken, async (req, res) => {
 
 
 //verify razorpay payment
-router.post("/verify",verifyUserToken,  async (req, res) => {
+router.post("/verify", verifyUserToken, async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
   try {
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (generatedSignature === razorpay_signature) {
-      // ✅ Payment verified
+    if (generatedSignature !== razorpay_signature) {
+      // ❌ Payment verification failed
+      await db.query(`UPDATE payments SET status = 'Failed' WHERE razorpay_order_id = ?`, [
+        razorpay_order_id,
+      ]);
 
-      // 1. Update payments table
-      await db.query(
-        `UPDATE payments 
-         SET razorpay_payment_id = ?, razorpay_signature = ?, status = 'Completed' 
-         WHERE razorpay_order_id = ?`,
-        [razorpay_payment_id, razorpay_signature, razorpay_order_id]
-      );
-
-      // 2. Update orders table
       await db.query(
         `UPDATE orders 
-         SET payment_status = 'Paid', order_status = 'Processing' 
-         WHERE tracking_id = ? OR id = (
-            SELECT order_id FROM payments WHERE razorpay_order_id = ?
-         )`,
-        [razorpay_order_id, razorpay_order_id]
-      );
-
-      // 3. (Optional) Clear cart_items for user
-      // safer: find user_id via order -> then clear cart
-      const [[orderRow]] = await db.query(
-        "SELECT user_id FROM orders WHERE tracking_id = ?",
-        [razorpay_order_id]
-      );
-      if (orderRow) {
-        await db.query("DELETE FROM cart_items WHERE customer_id = ?", [orderRow.user_id]);
-      }
-
-      // ✅ Send admin email (don’t break payment success if email fails)
-      try {
-        const emailPayload = await buildAdminOrderEmailPayloadByRazorpayOrderId(razorpay_order_id);
-        await sendAdminOrderConfirmedViaTemplate(emailPayload);
-      } catch (mailErr) {
-        console.error("Admin email failed (raw):", mailErr);
-
-        // If axios error:
-        console.error("Admin email failed (message):", mailErr?.message);
-        console.error("Admin email failed (status):", mailErr?.response?.status);
-        console.error("Admin email failed (data):", JSON.stringify(mailErr?.response?.data, null, 2));
-
-        // If ZeptoMail SDK error (non-axios):
-        console.error("Admin email failed (string):", String(mailErr));
-      }
-
-
-      res.json({ success: true, message: "Payment verified" });
-    } else {
-      // ❌ Payment verification failed
-      await db.query(
-        `UPDATE payments SET status = 'Failed' WHERE razorpay_order_id = ?`,
-        [razorpay_order_id]
-      );
-      await db.query(
-        `UPDATE orders SET payment_status = 'Failed', order_status = 'Cancelled' 
-         WHERE tracking_id = ?`,
+         SET payment_status = 'Failed', order_status = 'Cancelled' 
+         WHERE id = (SELECT order_id FROM payments WHERE razorpay_order_id = ? LIMIT 1)`,
         [razorpay_order_id]
       );
 
-      res.status(400).json({ success: false, message: "Invalid signature" });
+      return res.status(400).json({ success: false, message: "Invalid signature" });
     }
+
+    // ✅ Payment verified
+
+    // 0) Find internal order_id + user_id reliably
+    const [[payRow]] = await db.query(
+      `SELECT p.order_id, o.user_id
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+       WHERE p.razorpay_order_id = ?
+       LIMIT 1`,
+      [razorpay_order_id]
+    );
+
+    if (!payRow?.order_id) {
+      console.error("Verify: payment row not found for razorpay_order_id:", razorpay_order_id);
+      return res.status(404).json({ success: false, message: "Order/payment not found" });
+    }
+
+    const internalOrderId = payRow.order_id;
+    const userId = payRow.user_id;
+
+    // 1) Update payments table
+    await db.query(
+      `UPDATE payments 
+       SET razorpay_payment_id = ?, razorpay_signature = ?, status = 'Completed' 
+       WHERE razorpay_order_id = ?`,
+      [razorpay_payment_id, razorpay_signature, razorpay_order_id]
+    );
+
+    // 2) Update orders table
+    await db.query(
+      `UPDATE orders 
+       SET payment_status = 'Paid', order_status = 'Processing', tracking_id = COALESCE(tracking_id, ?)
+       WHERE id = ?`,
+      [razorpay_order_id, internalOrderId]
+    );
+
+    // 3) Clear cart_items (don’t break flow if it fails)
+    try {
+      await db.query(`DELETE FROM cart_items WHERE customer_id = ?`, [userId]);
+    } catch (cartErr) {
+      console.error("Cart clear failed:", cartErr?.message || cartErr);
+    }
+
+  // 4) Generate invoice (idempotent)
+let invoice = null;
+try {
+  const invRow = await generateInvoiceForRazorpayOrderId(razorpay_order_id);
+  if (invRow) {
+    const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+    const rel = String(invRow.pdf_path || "");
+    const url =
+      rel && base
+        ? `${base}${rel.startsWith("/") ? rel : `/${rel}`}`
+        : rel;
+
+    invoice = {
+      invoice_no: invRow.invoice_no || "",
+      pdf_path: invRow.pdf_path || "",
+      invoice_download_url: url || "",
+    };
+  }
+} catch (invErr) {
+  console.error("Invoice generation failed:", invErr?.message || invErr);
+}
+
+// 5) Send admin email
+try {
+  const emailPayload = await buildAdminOrderEmailPayloadByRazorpayOrderId(
+    razorpay_order_id
+  );
+  await sendAdminOrderConfirmedViaTemplate(emailPayload);
+} catch (mailErr) {
+  console.error("Admin email failed (raw):", mailErr);
+  console.error("Admin email failed (message):", mailErr?.message);
+  console.error("Admin email failed (status):", mailErr?.response?.status);
+  console.error(
+    "Admin email failed (data):",
+    JSON.stringify(mailErr?.response?.data, null, 2)
+  );
+  console.error("Admin email failed (string):", String(mailErr));
+}
+
+return res.json({
+  success: true,
+  message: "Payment verified",
+  order: { id: internalOrderId, tracking_id: razorpay_order_id },
+  invoice,
+});
+
   } catch (err) {
     console.error("Verify error:", err);
-    res.status(500).json({ error: "Verification failed" });
+    return res.status(500).json({ error: "Verification failed" });
   }
-}); 
+});
+
+
 
 router.post("/orders/:orderId/notify-admin", async (req, res) => {
   try {

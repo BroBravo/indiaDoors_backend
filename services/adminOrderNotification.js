@@ -1,41 +1,10 @@
 import { sendZeptoTemplateEmail } from "./zeptomailTemplate.js";
 
-function escapeHtml(s = "") {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function buildItemsHtml(items = []) {
-  // Put {{items_html}} in your ZeptoMail template where you want these rows injected
-  return items
-    .map((it) => {
-      const name = escapeHtml(it.name || "Item");
-      const variant = escapeHtml(it.variant || "");
-      const qty = Number(it.qty || 1);
-      const unit = money(it.unit_price);
-      const line = money(qty * Number(it.unit_price || 0));
-
-      return `
-        <tr>
-          <td>${name}${variant ? `<br><small>${variant}</small>` : ""}</td>
-          <td align="center">${qty}</td>
-          <td align="right">₹${unit}</td>
-          <td align="right">₹${line}</td>
-        </tr>
-      `;
-    })
-    .join("");
-}
-
-export async function sendAdminOrderConfirmedViaTemplate(order) {
+export async function sendAdminOrderConfirmedViaTemplate(payload) {
   const templateKey = process.env.ZEPTOMAIL_TEMPLATE_KEY_ORDER_ADMIN;
 
   const from = {
@@ -43,30 +12,39 @@ export async function sendAdminOrderConfirmedViaTemplate(order) {
     name: process.env.ZEPTOMAIL_FROM_NAME || "IndiaDoors",
   };
 
-  const adminTo = [{ address: process.env.ADMIN_NOTIFY_EMAIL, name: "IndiaDoors Admin" }];
+  const adminTo = [
+    { address: process.env.ADMIN_NOTIFY_EMAIL, name: "IndiaDoors Admin" },
+  ];
 
-  const subject = `Order Confirmed ✅ #${order.order_id} | ₹${money(order.order_total)} | ${order.customer_name}`;
+  const subject = `Order Confirmed ✅ #${payload.order_id} | ₹${payload.order_total} | ${payload.customer_name}`;
 
+  // ✅ IMPORTANT: keys MUST match template placeholders exactly
   const mergeInfo = {
-    order_id: String(order.order_id),
-    order_total: money(order.order_total),
-    order_datetime: order.order_datetime || "",
-    payment_method: order.payment_method || "",
-    payment_status: order.payment_status || "",
-    order_status: order.order_status || "Confirmed",
+    order_id: String(payload.order_id || ""),
+    order_total: String(payload.order_total || money(0)),
+    order_datetime: String(payload.order_datetime || ""),
+    timezone: String(payload.timezone || "IST"),
+    payment_method: String(payload.payment_method || ""),
+    payment_status: String(payload.payment_status || ""),
+    order_status: String(payload.order_status || ""),
 
-    customer_name: order.customer_name || "",
-    customer_phone: order.customer_phone || "",
-    customer_email: order.customer_email || "",
+    customer_name: String(payload.customer_name || ""),
+    customer_phone: String(payload.customer_phone || ""),
+    customer_email: String(payload.customer_email || ""),
 
-    shipping_address: order.shipping_address || "",
-    admin_order_link: order.admin_order_link || "",
+    shipping_address: String(payload.shipping_address || ""),
+    billing_address: String(payload.billing_address || ""),
 
-    subtotal: money(order.subtotal),
-    shipping_fee: money(order.shipping_fee),
-    discount: money(order.discount),
+    subtotal: String(payload.subtotal || money(0)),
+    shipping_fee: String(payload.shipping_fee || money(0)),
+    discount: String(payload.discount || money(0)),
 
-    items_html: buildItemsHtml(order.items), // use {{items_html}} in template
+    // ✅ matches template: {{items_rows}}
+    items_rows: String(payload.items_rows || ""),
+
+    // ✅ matches template: {{invoice_no}} + {{invoice_download_url}}
+    invoice_no: String(payload.invoice_no || ""),
+    invoice_download_url: String(payload.invoice_download_url || ""),
   };
 
   return sendZeptoTemplateEmail({
@@ -75,6 +53,7 @@ export async function sendAdminOrderConfirmedViaTemplate(order) {
     to: adminTo,
     subject,
     mergeInfo,
-    clientReference: `order-${order.order_id}`,
+    clientReference: `order-${payload.order_id}`,
   });
 }
+

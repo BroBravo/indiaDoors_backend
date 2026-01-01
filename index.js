@@ -73,6 +73,7 @@ app.use('/admin/product',noCache,adminProductRoutes);
 //test comment
 //Static files and uploads
 app.use("/assets", express.static(path.join(__dirname, "assets")));
+app.use("/invoices", express.static(path.join(__dirname, "invoices")));
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

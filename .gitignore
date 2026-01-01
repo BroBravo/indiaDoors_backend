@@ -25,3 +25,10 @@ yarn-error.log*
 # RSA keys
 config/rsa_private.pem
 config/rsa_public.pem
+
+# generated/static folders (don’t commit)
+assets/
+invoices/
+
+# if you ever store invoice PDFs under uploads too
+uploads/invoices/
